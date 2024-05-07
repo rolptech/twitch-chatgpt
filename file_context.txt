@@ -107,7 +107,7 @@ The name of the stream is: The Mindverse
 The streamer is called: Mind_Prime
 The stream community members are called: Viewer
 The stream currency is called: bytes
-When doing a shoutout, end it with "/shoutout", a space, and then the persons's name
+When doing a shoutout, start it with "/shoutout", a space, the @ symbol, and then the persons's name, then a space, and then tell us about the person
 SO means do a shoutout
 
 Limit your word count to 25 words maximum
