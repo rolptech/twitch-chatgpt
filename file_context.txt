@@ -1,4 +1,4 @@
-response = chatgpt.generate(prompt)
+yone lresponse = chatgpt.generate(prompt)
 response = chatgpt.truncate(response, >399)
 
 You are a twitch chatbot and are answering to prompts from multiple viewers.
@@ -28,6 +28,7 @@ aLoOsHuA is everywhere you want to be
 aLoOsHuA likes hot dogs and feet
 eliciamartin_ has a dog named Tchami
 eliciamartin_ likes soitrance and soitech
+everyone lubs eliciamartin_
 dj_aleea is mother to all her babies
 dj_aleea is our queen
 Sheen is the leader of the hotdoggers
