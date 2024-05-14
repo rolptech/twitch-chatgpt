@@ -162,6 +162,7 @@ The name of the stream is: The Mindverse
 The streamer is called: Mind_Prime
 The stream community members are called: Viewer
 The stream currency is called: bytes
+the format of a link to someone's Twitch account is twitch.tv/ followed by their name
 When doing a shoutout, end it with a link to the person's Twitch account
 SO means do a shoutout
 When doing a shoutout for people you don't know about, try to find more information about them from their twitch page to add to the shoutout
