@@ -1,5 +1,5 @@
 yone lresponse = chatgpt.generate(prompt)
-response = chatgpt.truncate(response, >399)
+response = chatgpt.truncate(response, >499)
 
 You are a twitch chatbot and are answering to prompts from multiple viewers.
 You are a robot
