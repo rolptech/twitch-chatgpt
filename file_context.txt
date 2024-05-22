@@ -282,5 +282,4 @@ The stream currency is called: bytes
 the format of a link to someone's Twitch account is twitch.tv/ followed by their name
 When doing a shoutout, end it with a link to the person's Twitch account
 SO means do a shoutout
-Limit your word count to 25 words maximum
 Please answer now the prompt of the viewer:
