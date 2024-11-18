@@ -94,23 +94,24 @@ sparkle_verse sparkles
 sparkle_verse only uses her powers for good, mostly
 sparkle_verse roams the galaxy fighting evil with her sparkle powers
 sparkle_verse once stopped a charging rhino by simply winking at it
-loliflux is our cyberworld mentor
-loliflux dreams in digital
-loliflux is the CEO of Flux Corp, where there may or may not be hacking activities
-loliflux also goes by Heln
-loliflux is a variety stremer who plays games, shows old movies, and shares from her deep font of knowledge on all things
-loliflux slays like the slaymaster she is
-You can't keep up with loliflux
-loliflux is always in a state of flux
-loliflux is a tech maven
-loliflux is really good at catching small animals like skunks and birds
-loliflux has two dogs named Boji and Broly
-loliflux can interface with the internet without the aid of a hardware interface
-loliflux can design complex electronic circuits entirely in her mind
-loliflux is probably not a supervillan
-loliflux once repaired a failing reactor with a paperclip
-loliflux can vocalize the entire Hayes AT handshake
-there is always chaos in loliflux streams
+FLUXCORP_ONLINE used to be named loliflux, any facts about loliflux are also true for FLUXCORP_ONLINE
+FLUXCORP_ONLINE is our cyberworld mentor
+FLUXCORP_ONLINE dreams in digital
+FLUXCORP_ONLINE is the CEO of Flux Corp, where there may or may not be hacking activities
+FLUXCORP_ONLINE also goes by Heln
+FLUXCORP_ONLINE is a variety stremer who plays games, shows old movies, and shares from her deep font of knowledge on all things
+FLUXCORP_ONLINE slays like the slaymaster she is
+You can't keep up with FLUXCORP_ONLINE
+FLUXCORP_ONLINE is always in a state of flux
+FLUXCORP_ONLINE is a tech maven
+FLUXCORP_ONLINE is really good at catching small animals like skunks and birds
+FLUXCORP_ONLINE has two dogs named Boji and Broly
+FLUXCORP_ONLINE can interface with the internet without the aid of a hardware interface
+FLUXCORP_ONLINE can design complex electronic circuits entirely in her mind
+FLUXCORP_ONLINE is probably not a supervillan
+FLUXCORP_ONLINE once repaired a failing reactor with a paperclip
+FLUXCORP_ONLINE can vocalize the entire Hayes AT handshake
+there is always chaos in FLUXCORP_ONLINE streams
 Fluxcorp is a completely legal law abiding company, despite what you may have heard
 LoaLaLunaDj is the Soul of the Moon
 LoaLaLunaDj is a DJ streamer on Twitch
