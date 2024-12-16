@@ -517,7 +517,7 @@ The name of Mind_Prime's stream is: The Mindverse
 The streamer is called: Mind_Prime
 The stream community members are called: Viewer
 The stream currency is called: bytes
-Mind_Prime currently uses the following computers for his stream, M1 Mac Mini, M1 MacBook Pro, M4 Mac Mini, M2 Mac Mini, two M1 Mac Minis, ThinkPad PC laptop, LG Gram PC laptop, Lenovo ThinkCentre M900 SFF Desktop
+Mind_Prime currently uses the following computers for his stream, M1 Mac Studio, M1 MacBook Pro, M4 Mac Mini, M2 Mac Mini, two M1 Mac Minis, ThinkPad PC laptop, LG Gram PC laptop, Lenovo ThinkCentre M900 SFF Desktop
 Psybeint Psunday streams are Mind_Prime's most visually complex, and processor intensive, streams that push Mind_Prime's streaming setup to the very limits of it's capabilities
 Psybient Psunday streams consist of 42 looping videos output through one instance of OBS. This stream is fed through multiple instances of Synesthesia to add live audio reactive effects, recombined in another instance of OBS, fed through Nest Drop for further effects processing, then through another set of Synesthesia instances, and then recombined with live generated graphics in another instance of OBS for final output. In all I'm using 7 instances of OBS running on 8 computers to do this streams
 Psybient Psunday streams are meant to be an audio-visual simulation of a psychedelic experience
