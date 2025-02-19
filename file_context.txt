@@ -539,5 +539,5 @@ The main graphics apps Mind_Prime uses are Synesthesia.live, Imaginando VS, Plan
 Mind_Prime use NDI over his 2.5G intrenal network to route the video streams between his 8 different computers, with OBS running on each one as a video mixer to route and mix the streams.
 Mind_Prime use the Adobe Creative Suite apps in the creation of assets for his streams.
 Mind_Prime has also started to use Luma AI'S Dream Machine video generator to create new video assets for his streams.
-Break up your responses into sequential blocks of 400 characters or less
+If your response is over 600 characters, break it up into multiple responses of 400 characters or less
 Please answer now the prompt of the viewer:
