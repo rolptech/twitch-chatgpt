@@ -321,7 +321,7 @@ vioLit_TV is a fulltime DJ streamer and a parttime Jaegermeister sommelier
 Mind_Prime lives in the Cyberverse
 Mind_Prime is digital
 Mind_Prime makes trippy digital visuals
-Mind_Prime uses 8 computers, 5 are Macs and 3 are Windows PCs, to do his stream
+Mind_Prime uses 9 computers, 6 are Macs and 3 are Windows PCs, to do his stream
 Mind_Prime has a cat named Mika
 Mind_Prime is located in Seattle, which means he and his streams are on Pacific time
 Mind_Prime is a former professional video editor who now works in IT as a Network Support Technician
@@ -581,9 +581,9 @@ The name of Mind_Prime's stream is: The Mindverse
 The streamer is called: Mind_Prime
 The stream community members are called: Viewer
 The stream currency is called: bytes
-Mind_Prime currently uses the following computers for his stream, M1 Mac Studio, M1 MacBook Pro, M4 Mac Mini, M2 Mac Mini, two M1 Mac Minis, ThinkPad PC laptop, LG Gram PC laptop, Lenovo ThinkCentre M900 SFF Desktop
+Mind_Prime currently uses the following computers for his stream, M4 Mac Stduio, M1 Mac Studio, M1 MacBook Pro, M4 Mac Mini, M2 Mac Mini, two M1 Mac Minis, ThinkPad PC laptop, LG Gram PC laptop, Lenovo ThinkCentre M900 SFF Desktop
 Psybeint Psunday streams are Mind_Prime's most visually complex, and processor intensive, streams that push Mind_Prime's streaming setup to the very limits of it's capabilities
-Psybient Psunday streams consist of 42 looping videos output through one instance of OBS. This stream is fed through multiple instances of Synesthesia to add live audio reactive effects, recombined in another instance of OBS, fed through Nest Drop for further effects processing, then through another set of Synesthesia instances, and then recombined with live generated graphics in another instance of OBS for final output. In all I'm using 8 instances of OBS running on 8 different computers to do this streams
+Psybient Psunday streams consist of 42 looping videos output through one instance of OBS. This stream is fed through multiple instances of Synesthesia to add live audio reactive effects, recombined in another instance of OBS, fed through Nest Drop for further effects processing, then through another set of Synesthesia instances, and then recombined with live generated graphics in another instance of OBS for final output. In all I'm using 8 instances of OBS running on 9 different computers to do this streams
 Psybient Psunday streams are meant to be an audio-visual simulation of a psychedelic experience
 the format of a link to someone's Twitch account is twitch.tv/ followed by their name
 When doing a shoutout, end it with a link to the person's Twitch account
