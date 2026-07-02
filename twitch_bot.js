@@ -1,10 +1,8 @@
 // Import tmi.js module
 import tmi from 'tmi.js';
-import OpenAI from 'openai';
-import { promises as fsPromises } from 'fs';
 
 export class TwitchBot {
-    constructor(bot_username, oauth_token, channels, openai_api_key, enable_tts) {
+    constructor(bot_username, oauth_token, channels) {
         this.channels = channels;
         this.client = new tmi.client({
             connection: {
@@ -17,8 +15,6 @@ export class TwitchBot {
             },
             channels: this.channels
         });
-        this.openai = new OpenAI({apiKey: openai_api_key});
-        this.enable_tts = enable_tts;
     }
 
     addChannel(channel) {
@@ -79,33 +75,6 @@ export class TwitchBot {
                 console.error(error);
             }
         })();
-    }
-
-    async sayTTS(channel, text, userstate) {
-        // Check if TTS is enabled
-        if (this.enable_tts !== 'true') {
-            return;
-        }
-        try {
-            // Make a call to the OpenAI TTS model
-            const mp3 = await this.openai.audio.speech.create({
-                model: 'tts-1',
-                voice: 'alloy',
-                input: text,
-            });
-
-            // Convert the mp3 to a buffer
-            const buffer = Buffer.from(await mp3.arrayBuffer());
-
-            // Save the buffer as an MP3 file
-            const filePath = './public/file.mp3';
-            await fsPromises.writeFile(filePath, buffer);
-
-            // Return the path of the saved audio file
-            return filePath;
-        } catch (error) {
-            console.error('Error in sayTTS:', error);
-        }
     }
 
     whisper(username, message) {
