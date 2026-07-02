@@ -124,9 +124,9 @@ bot.connect(
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
 
-    // !song / !np — direct now-playing lookup, no Claude call
+    // !song — direct now-playing lookup, no Claude call (!np intentionally omitted — StreamElements owns it)
     const _msg = message.trim().toLowerCase();
-    if (_msg === "!song" || _msg === "!np" || _msg.startsWith("!song ") || _msg.startsWith("!np ")) {
+    if (_msg === "!song" || _msg.startsWith("!song ")) {
         const t = serato ? serato.nowPlaying() : null;
         bot.say(channel, t ? ("Now playing: " + t) : "No track is playing right now.");
         return;
