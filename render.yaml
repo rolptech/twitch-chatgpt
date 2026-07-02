@@ -7,8 +7,8 @@ services:
     buildCommand: npm install
     startCommand: npm start
     envVars:
-      - key: OPENAI_API_KEY
-        value: <your-openai-api-key>
+      - key: ANTHROPIC_API_KEY
+        value: <your-anthropic-api-key>
       - key: CHANNELS
         value: <your-twitch-channel>
       - key: GPT_MODE
@@ -16,7 +16,7 @@ services:
       - key: HISTORY_LENGTH
         value: "3"
       - key: MODEL_NAME
-        value: "gpt-3.5-turbo"
+        value: "claude-haiku-4-5-20251001"
       - key: COMMAND_NAME
         value: "chat"
       - key: TWITCH_USER  # https://dev.twitch.tv/console
@@ -25,7 +25,5 @@ services:
         value: "oauth:9wh6ujbu2mro28zhbl8z6z921iuyxz"
       - key: SEND_USERNAME
         value: "true"
-      - key: ENABLE_TTS
-        value: "false"
       - key: ENABLE_CHANNEL_POINTS
         value: "false"
