@@ -42,7 +42,6 @@ export class ClaudeOperations {
                 messages: this.messages,
                 max_tokens: 256,
                 temperature: 1,
-                top_p: 1,
             });
 
             // Check if response has content
