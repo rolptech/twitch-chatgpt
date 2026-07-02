@@ -6,6 +6,7 @@ import expressWs from 'express-ws';
 import {job} from './keep_alive.js';
 
 import {ClaudeOperations} from './claude_operations.js';
+import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
 
 // start keep alive cron job
@@ -29,6 +30,7 @@ let COMMAND_NAME = process.env.COMMAND_NAME // comma separated list of commands 
 let CHANNELS = process.env.CHANNELS // comma separated list of channels to join
 let SEND_USERNAME = process.env.SEND_USERNAME // send username in message to claude
 let ENABLE_CHANNEL_POINTS = process.env.ENABLE_CHANNEL_POINTS; // enable channel points
+let SERATO_PLAYLIST_ID = process.env.SERATO_PLAYLIST_ID // serato live playlist id for now-playing (e.g. 15134427)
 
 if (!GPT_MODE) {
     GPT_MODE = "CHAT"
@@ -88,6 +90,11 @@ const bot = new TwitchBot(TWITCH_USER, TWITCH_AUTH, channels);
 file_context = fs.readFileSync("./file_context.txt", 'utf8');
 const claude_ops = new ClaudeOperations(file_context, ANTHROPIC_API_KEY, MODEL_NAME, HISTORY_LENGTH);
 
+// setup serato now-playing poller (optional — only active if SERATO_PLAYLIST_ID is set)
+const serato = SERATO_PLAYLIST_ID ? new SeratoOperations(SERATO_PLAYLIST_ID) : null;
+if (serato) { serato.start(); console.log("Serato now-playing enabled for playlist " + SERATO_PLAYLIST_ID); }
+else { console.log("SERATO_PLAYLIST_ID not set — now-playing disabled."); }
+
 // setup twitch bot callbacks
 bot.onConnected((addr, port) => {
     console.log(`* Connected to ${addr}:${port}`);
@@ -117,6 +124,14 @@ bot.connect(
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
 
+    // !song / !np — direct now-playing lookup, no Claude call
+    const _msg = message.trim().toLowerCase();
+    if (_msg === "!song" || _msg === "!np" || _msg.startsWith("!song ") || _msg.startsWith("!np ")) {
+        const t = serato ? serato.nowPlaying() : null;
+        bot.say(channel, t ? ("Now playing: " + t) : "No track is playing right now.");
+        return;
+    }
+
     if (ENABLE_CHANNEL_POINTS) {
         console.log(`The message id is ${user["msg-id"]}`);
         if (user["msg-id"] === "highlighted-message") {
@@ -131,6 +146,12 @@ bot.onMessage(async (channel, user, message, self) => {
 
         if (SEND_USERNAME) {
             text = "Message from user " + user.username + ": " + text
+        }
+
+        // music-aware: prepend the current track if a set is live
+        const _np = serato ? serato.nowPlaying() : null;
+        if (_np) {
+            text = "[Now playing on stream: " + _np + "] " + text;
         }
 
         // make claude call
