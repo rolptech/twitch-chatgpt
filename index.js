@@ -26,7 +26,7 @@ let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY // anthropic api key
 let MODEL_NAME = process.env.MODEL_NAME // anthropic/claude model name (e.g. claude-haiku-4-5-20251001)
 let TWITCH_USER = process.env.TWITCH_USER // twitch bot username
 let TWITCH_AUTH =  process.env.TWITCH_AUTH // tmi auth token
-let COMMAND_NAME = process.env.COMMAND_NAME // comma separated list of commands to trigger bot (e.g. !gpt, !chat)
+let COMMAND_NAME = process.env.COMMAND_NAME // comma separated list of commands to trigger bot (e.g. !gpt, !chat) — NOTE: no longer used for the Claude trigger path as of Stage 3 (see TRIGGER_REGEX below); left in place only to avoid touching unrelated env parsing.
 let CHANNELS = process.env.CHANNELS // comma separated list of channels to join
 let SEND_USERNAME = process.env.SEND_USERNAME // send username in message to claude
 let ENABLE_CHANNEL_POINTS = process.env.ENABLE_CHANNEL_POINTS; // enable channel points
@@ -72,6 +72,72 @@ if (!SEND_USERNAME) {
 }
 if (!ENABLE_CHANNEL_POINTS) {
     ENABLE_CHANNEL_POINTS = "false";
+}
+
+// ---------------------------------------------------------------------------
+// Stage 3 — Broader triggering (2026-07-03 work order)
+// ---------------------------------------------------------------------------
+
+// Trigger token set (Max, 3 Jul 2026) — fixed, not env-configurable.
+// Case-insensitive, word-boundary matched: fires only as a standalone
+// word/mention, never as a substring inside a larger word (e.g.
+// "mindbotting") or a dotted URL/domain (e.g. "mindbot.tv"). A literal
+// sentence-ending period ("...mindbot.") still passes — only a period
+// immediately followed by another word character (domain-suffix shape) is
+// excluded. "@mb" deliberately requires the "@" so it never collides with
+// "my bad".
+//
+// This REPLACES the old prefix-only match (`message.toLowerCase().startsWith(COMMAND_NAME)`)
+// and its slice-bug: `message.slice(COMMAND_NAME.length)` used the command
+// ARRAY's .length (=1), not the matched string's length, so it stripped only
+// one character and leaked trigger text into the Claude prompt. The
+// anywhere-match rewrite below strips the actual matched token via regex
+// replace instead, so that bug class can't recur.
+const TRIGGER_TOKENS = ["@Mind_B0t", "mindbot", "mindb0t", "mind_b0t", "mind_bot", "@mb"];
+
+function _triggerTokenToPattern(tok) {
+    const esc = tok.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // defensive; no metachars in current tokens
+    const lead = esc.startsWith("@") ? "(?<![\\w@])" : "\\b"; // "@token" must not be glued to a preceding word char or another "@"
+    const trail = "\\b(?!\\.\\w)"; // standard word boundary, but refuse to match into a ".tld"-shaped URL/domain suffix
+    return `${lead}${esc}${trail}`;
+}
+
+const TRIGGER_REGEX = new RegExp(TRIGGER_TOKENS.map(_triggerTokenToPattern).join("|"), "i");
+
+// Cooldowns (Max, 3 Jul 2026) — silent, gate ONLY the trigger→Claude path.
+// !song (S2) and the kill-switch commands below are exempt. In-memory only
+// (resets on restart) — no persistence needed for a rate limiter.
+const COOLDOWN_PER_USER_SEC = Number(process.env.COOLDOWN_PER_USER_SEC || 10);
+const COOLDOWN_GLOBAL_SEC = Number(process.env.COOLDOWN_GLOBAL_SEC || 5);
+const _lastFirePerUser = new Map(); // username (as given by tmi.js) -> ms epoch of last Claude fire
+let _lastFireGlobal = -Infinity;    // ms epoch of last Claude fire, any user
+
+function _cooldownActive(username) {
+    const now = Date.now();
+    if (now - _lastFireGlobal < COOLDOWN_GLOBAL_SEC * 1000) return true;
+    const last = _lastFirePerUser.get(username);
+    if (last && now - last < COOLDOWN_PER_USER_SEC * 1000) return true;
+    return false;
+}
+
+function _markFired(username) {
+    const now = Date.now();
+    _lastFireGlobal = now;
+    _lastFirePerUser.set(username, now);
+}
+
+// Kill switch (Max, 3 Jul 2026) — mod/broadcaster-only, instant, in-memory.
+// BOT_ENABLED is only the BOOT default (Max sets it on Render); the chat
+// command flips in-memory state until the process next restarts. The
+// Stream-Deck trigger for this rides on Stage 4's endpoint — not built here.
+// Command names are deliberately NOT trigger tokens (verified: neither
+// "!mbstop" nor "!mbstart" matches TRIGGER_REGEX above).
+let _botEnabled = String(process.env.BOT_ENABLED || "true").toLowerCase() !== "false";
+
+function _isModOrBroadcaster(user) {
+    if (user && user.mod) return true;
+    if (user && user.badges && user.badges.broadcaster === "1") return true;
+    return false;
 }
 
 // init global variables
@@ -124,11 +190,22 @@ bot.connect(
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
 
-    // !song — direct now-playing lookup, no Claude call (!np intentionally omitted — StreamElements owns it)
     const _msg = message.trim().toLowerCase();
+
+    // !song — direct now-playing lookup, no Claude call (!np intentionally omitted — StreamElements owns it)
+    // Untouched from Stage 2; exempt from cooldowns and the kill switch.
     if (_msg === "!song" || _msg.startsWith("!song ")) {
         const t = serato ? serato.nowPlaying() : null;
         bot.say(channel, t ? ("Now playing: " + t) : "No track is playing right now.");
+        return;
+    }
+
+    // Stage 3 — kill switch. Mod/broadcaster-only; short-circuits before the
+    // trigger check. Non-mods invoking it are ignored silently.
+    if (_msg === "!mbstop" || _msg === "!mbstart") {
+        if (!_isModOrBroadcaster(user)) return;
+        _botEnabled = (_msg === "!mbstart");
+        console.log(`[mind_b0t] Claude trigger path ${_botEnabled ? "ENABLED" : "DISABLED"} by ${user.username}`);
         return;
     }
 
@@ -140,9 +217,17 @@ bot.onMessage(async (channel, user, message, self) => {
             bot.say(channel, response);
         }
     }
-    // check if message is a command started with !COMMAND_NAME (e.g. !gpt) in lower-cased
-    if (message.toLowerCase().startsWith(COMMAND_NAME)) {
-        let text = message.slice(COMMAND_NAME.length);
+
+    // Stage 3 — broader triggering: fire on any trigger token appearing
+    // anywhere in the message (replaces the old prefix-only COMMAND_NAME
+    // startsWith match). Gated by the kill switch and the silent cooldowns.
+    if (_botEnabled && TRIGGER_REGEX.test(message)) {
+        if (_cooldownActive(user.username)) return; // rate-limited: drop silently, post nothing
+
+        _markFired(user.username);
+
+        // Strip the matched trigger token so Claude gets a clean message.
+        let text = message.replace(TRIGGER_REGEX, "").replace(/\s+/g, ' ').trim();
 
         if (SEND_USERNAME) {
             text = "Message from user " + user.username + ": " + text
