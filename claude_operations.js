@@ -36,13 +36,29 @@ export class ClaudeOperations {
             this.check_history_length();
 
             // Use await to get the response from Claude
+            // Prompt caching (post-S3, 3 Jul 2026): the system prompt (file_context.txt,
+            // ~10k tokens of roster + persona) is now wrapped as a cached content block
+            // instead of a bare string. It's re-sent on every call (mentions, !song,
+            // shoutouts) and is ~85-90% of the bot's token cost — caching cuts that
+            // ~85-90% on every call that hits within the 5-min ephemeral cache window,
+            // which comfortably covers live-stream call cadence. temperature stays 1;
+            // deliberately NOT adding top_p (that 400s alongside temperature — the S1 bug).
             const response = await this.anthropic.messages.create({
                 model: this.model_name,
-                system: this.system_prompt,
+                system: [
+                    { type: "text", text: this.system_prompt, cache_control: { type: "ephemeral" } }
+                ],
                 messages: this.messages,
                 max_tokens: 256,
                 temperature: 1,
             });
+
+            // Log token usage incl. cache read/write so cache hits are visible in Render
+            // logs (verification checklist wants a cache_read_input_tokens sighting on a
+            // repeat call).
+            if (response.usage) {
+                console.log(`Usage: input=${response.usage.input_tokens} cache_creation=${response.usage.cache_creation_input_tokens ?? 0} cache_read=${response.usage.cache_read_input_tokens ?? 0} output=${response.usage.output_tokens}`);
+            }
 
             // Check if response has content
             if (response.content && response.content.length > 0) {

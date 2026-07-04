@@ -103,6 +103,11 @@ function _triggerTokenToPattern(tok) {
 }
 
 const TRIGGER_REGEX = new RegExp(TRIGGER_TOKENS.map(_triggerTokenToPattern).join("|"), "i");
+// Separate global/case-insensitive copy used ONLY for stripping the matched token(s)
+// out of the outgoing Claude text (S3 nit: the non-global TRIGGER_REGEX above must stay
+// non-global for .test() — a "g" flag there would introduce lastIndex statefulness across
+// calls and break repeated matching). This one strips ALL occurrences in a multi-token message.
+const TRIGGER_REGEX_STRIP_ALL = new RegExp(TRIGGER_TOKENS.map(_triggerTokenToPattern).join("|"), "gi");
 
 // Cooldowns (Max, 3 Jul 2026) — silent, gate ONLY the trigger→Claude path.
 // !song (S2) and the kill-switch commands below are exempt. In-memory only
@@ -192,11 +197,39 @@ bot.onMessage(async (channel, user, message, self) => {
 
     const _msg = message.trim().toLowerCase();
 
-    // !song — direct now-playing lookup, no Claude call (!np intentionally omitted — StreamElements owns it)
-    // Untouched from Stage 2; exempt from cooldowns and the kill switch.
+    // !song (post-S3 enrichment, 3 Jul 2026) — now a Claude-enriched answer instead
+    // of a bare "Now playing: ..." string, since the artist/track are already on
+    // Max's screen. Now respects the kill switch AND the shared cooldowns (it's an
+    // LLM call now, sharing the same rate-limit maps as the trigger path) — no
+    // longer exempt. Trailing text after "!song" (e.g. "!song foo") is ignored,
+    // same as before.
     if (_msg === "!song" || _msg.startsWith("!song ")) {
+        if (!_botEnabled) return; // kill switch: silent, same as the trigger path
+        if (_cooldownActive(user.username)) return; // rate-limited: drop silently
+        _markFired(user.username);
+
         const t = serato ? serato.nowPlaying() : null;
-        bot.say(channel, t ? ("Now playing: " + t) : "No track is playing right now.");
+        if (!t) {
+            // No live set — plain fallback, no Claude call.
+            bot.say(channel, "No track is playing right now.");
+            return;
+        }
+
+        const songText = "[Now playing on stream: " + t + "] A viewer used the !song command — tell the chat what's playing and give your take on this track.";
+        const songResponse = await claude_ops.make_claude_call(songText);
+
+        // split response if it exceeds twitch chat message length limit
+        // send multiples messages with a delay in between (same splitter as the trigger path)
+        if (songResponse.length > MAX_LENGTH) {
+            const songMessages = songResponse.match(new RegExp(`.{1,${MAX_LENGTH}}`, "g"));
+            songMessages.forEach((message, index) => {
+                setTimeout(() => {
+                    bot.say(channel, message);
+                }, 1000 * index);
+            });
+        } else {
+            bot.say(channel, songResponse);
+        }
         return;
     }
 
@@ -209,9 +242,14 @@ bot.onMessage(async (channel, user, message, self) => {
         return;
     }
 
-    if (ENABLE_CHANNEL_POINTS) {
+    // S3 nit fix: gate behind the kill switch (and the shared cooldowns) so !mbstop
+    // mutes this path too — previously it called Claude unconditionally whenever
+    // channel points were enabled. Off by default (ENABLE_CHANNEL_POINTS), so no
+    // live-impact change unless Max turns channel points on.
+    if (_botEnabled && ENABLE_CHANNEL_POINTS) {
         console.log(`The message id is ${user["msg-id"]}`);
-        if (user["msg-id"] === "highlighted-message") {
+        if (user["msg-id"] === "highlighted-message" && !_cooldownActive(user.username)) {
+            _markFired(user.username);
             console.log(`The message is ${message}`);
             const response = await claude_ops.make_claude_call(message);
             bot.say(channel, response);
@@ -227,7 +265,7 @@ bot.onMessage(async (channel, user, message, self) => {
         _markFired(user.username);
 
         // Strip the matched trigger token so Claude gets a clean message.
-        let text = message.replace(TRIGGER_REGEX, "").replace(/\s+/g, ' ').trim();
+        let text = message.replace(TRIGGER_REGEX_STRIP_ALL, "").replace(/\s+/g, ' ').trim();
 
         if (SEND_USERNAME) {
             text = "Message from user " + user.username + ": " + text
