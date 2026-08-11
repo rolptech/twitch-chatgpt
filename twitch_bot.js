@@ -64,6 +64,10 @@ export class TwitchBot {
         this.client.on('disconnected', callback);
     }
 
+    onRaided(callback) {
+        this.client.on('raided', callback);
+    }
+
     say(channel, message) {
         // Use async/await syntax to handle promises
         (async () => {
