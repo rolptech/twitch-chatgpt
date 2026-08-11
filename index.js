@@ -8,6 +8,15 @@ import {job} from './keep_alive.js';
 import {ClaudeOperations} from './claude_operations.js';
 import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
+import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase} from './twitch_profile.js';
+
+// WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
+// engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
+// raid-enrichment fetch below needs Node >=18 for global fetch to exist.
+// This is the one-time (now permanent, via Render's log) way to find out
+// what's actually running. process.version is NOT a secret — do not extend
+// this to anything from process.env (that was the Stage 1 leak).
+console.log("node", process.version);
 
 // start keep alive cron job
 job.start();
@@ -145,6 +154,46 @@ function _isModOrBroadcaster(user) {
     return false;
 }
 
+// ---------------------------------------------------------------------------
+// Raid auto-shoutout + profile enrichment (2026-08-11 work order)
+// ---------------------------------------------------------------------------
+// Builds the context block Claude sees for a raid welcome, from whatever
+// survived the fetch + clean pipeline in twitch_profile.js. Every bracketed
+// field is OMITTED if empty (WO §3d) — `profile` itself is null whenever the
+// enrichment fetch failed or the login didn't resolve (fail-open), in which
+// case the welcome still fires on username + viewer count alone.
+//
+// Deliberately NOT wrapped with the SEND_USERNAME "Message from user..."
+// prefix used on the trigger path — the first line already names the raider.
+function _buildRaidPrompt(username, viewers, profile) {
+    const lines = [`[RAID] ${username} just raided the channel with ${viewers} viewers.`];
+
+    if (profile) {
+        const description = cleanDescription(profile.description);
+        if (description) {
+            lines.push(`[About them: ${description}]`);
+        }
+
+        if (profile.stream && profile.stream.id) {
+            lines.push(`[They are LIVE right now.]`);
+        }
+
+        const lastBroadcast = profile.lastBroadcast;
+        const title = lastBroadcast ? cleanTitle(lastBroadcast.title) : "";
+        if (title) {
+            const category = lastBroadcast.game && lastBroadcast.game.name
+                ? ` in ${lastBroadcast.game.name}`
+                : "";
+            const when = relativeTimePhrase(lastBroadcast.startedAt);
+            const whenPart = when ? `, ${when}` : "";
+            lines.push(`[Their last stream: "${title}"${category}${whenPart}]`);
+        }
+    }
+
+    lines.push("Give them a warm, in-character welcome and shoutout.");
+    return lines.join("\n");
+}
+
 // init global variables
 const MAX_LENGTH = 399
 let file_context = "You are a helpful Twitch Chatbot."
@@ -179,6 +228,38 @@ bot.onConnected((addr, port) => {
 
 bot.onDisconnected((reason) => {
     console.log(`Disconnected: ${reason}`);
+});
+
+// Raid auto-shoutout + profile enrichment (2026-08-11 work order). tmi.js
+// fires 'raided' once per inbound raid: (channel, username, viewers).
+//
+// Gating (WO §3e): respects the kill switch (same as every other Claude
+// path) but deliberately has NO cooldown and NO viewer threshold — a raid is
+// rare and non-spammy, and fake/tiny raids are not a concern (Max, 4 Jul).
+// Do not route this through _cooldownActive.
+bot.onRaided(async (channel, username, viewers) => {
+    if (!_botEnabled) return; // kill switch: !mbstop mutes auto-welcomes too
+
+    // Fail-open by contract (twitch_profile.js): resolves null on a network
+    // error, a timeout, or an unknown login — never throws, never delays
+    // past its own ~2s budget. The welcome below fires either way.
+    const profile = await fetchRaiderProfile(username);
+
+    const text = _buildRaidPrompt(username, viewers, profile);
+    const response = await claude_ops.make_claude_call(text);
+
+    // Same MAX_LENGTH splitter used by every other path that posts a Claude
+    // response to chat.
+    if (response.length > MAX_LENGTH) {
+        const messages = response.match(new RegExp(`.{1,${MAX_LENGTH}}`, "g"));
+        messages.forEach((message, index) => {
+            setTimeout(() => {
+                bot.say(channel, message);
+            }, 1000 * index);
+        });
+    } else {
+        bot.say(channel, response);
+    }
 });
 
 // connect bot

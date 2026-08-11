@@ -4,6 +4,9 @@
   "description": "A Twitch chat bot that uses Anthropic's Claude to generate messages based on the chat of a Twitch channel. It can be used to generate messages for a chatbot, or to generate, for example, a chatbot for a game.",
   "main": "index.js",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node index.js"
   },
