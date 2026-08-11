@@ -49,7 +49,13 @@ export class ClaudeOperations {
                     { type: "text", text: this.system_prompt, cache_control: { type: "ephemeral" } }
                 ],
                 messages: this.messages,
-                max_tokens: 256,
+                // 11 Aug 2026: was 256. A shoutout ran to 964 chars (~241 tokens) and was
+                // CUT MID-SENTENCE at the ceiling. 300 gives ~1,130 chars — enough for the
+                // model to land its final sentence past the 800-char target, without
+                // licensing a 1,600-char reply (Max ruled against that ceiling explicitly).
+                // ⛔ This is a GUARDRAIL, not a length control. The length rule lives in
+                // file_context.txt; raising this instead of fixing that is the wrong fix.
+                max_tokens: 300,
                 temperature: 1,
             });
 
