@@ -11,6 +11,28 @@
 //   ⛔ SHORT — one or two lines. The 600-800 char shoutout rule does NOT
 //      apply here; every prompt built below says so explicitly.
 //
+// ---------------------------------------------------------------------------
+// WO §6 (corrected 11 Aug 2026, after an earlier draft got this backwards):
+// a SEPARATE announcer (not this codebase — StreamElements or a Twitch
+// alert) already posts "X just subscribed" to chat. This bot is not that
+// announcer and nothing needs to be turned off. What this build replaces is
+// Max typing "Thanks for the sub!" by hand. Two consequences, both load-
+// bearing in _buildPrompt below:
+//
+//   1. Don't restate the announcement. The who/what is already on screen —
+//      the fact lines fed to Claude are CONTEXT, and every prompt tells
+//      Claude explicitly not to echo them back as news. The bot's only job
+//      is the thanks itself.
+//   2. Vary the wording every time, and ask for that EXPLICITLY in the
+//      prompt (Max: "maybe a different variation on that each time?"). A
+//      fixed system prompt + a near-identical user prompt converges on one
+//      house phrasing on its own — that convergence is exactly what would
+//      make this no better than the static announcer it's replacing, so the
+//      instruction is spelled out rather than assumed.
+//   3. Thank people for SUPPORTING THE CHANNEL, not just "for the sub" —
+//      Max's framing; it reads warmer and covers resubs/gifts/Prime too.
+// ---------------------------------------------------------------------------
+//
 // This module is pure logic + injected side effects (say/claudeCall/log/
 // clock/timer), so it can be unit-tested with synthetic tmi.js-shaped
 // events and no live credentials, no network, and no real 15s waits.
@@ -130,13 +152,20 @@ export function createSubThanks({
     }
 
     function _buildPrompt(factLines) {
+        // WO §6 (corrected 11 Aug 2026): a separate announcer already posts
+        // "X just subscribed" to chat — this bot is not that announcer, it
+        // replaces Max typing "Thanks for the sub!" by hand. So the fact
+        // lines below are CONTEXT for Claude (who, what kind of support, how
+        // many), not text to be echoed back as a re-announcement — the
+        // instruction explicitly tells Claude the news part is already on
+        // screen and its only job is the thanks itself.
         const lines = factLines.length === 1
-            ? [`[SUB] ${factLines[0]}.`]
-            : [`[SUBS] Several people just supported the channel:`, ...factLines.map((f) => `- ${f}.`)];
+            ? [`[Already announced in chat — do not restate as news: ${factLines[0]}.]`]
+            : [`[Already announced in chat — do not restate as news:`, ...factLines.map((f) => `- ${f}.`)];
 
         const instruction = factLines.length === 1
-            ? "Thank them. ONE OR TWO LINES ONLY — this is a quick thank-you, not a shoutout: no biographical facts, no lookups, nothing beyond a short, warm thanks."
-            : "Thank them all together in ONE short message, naming everyone briefly. ONE OR TWO LINES TOTAL — this is a quick thank-you, not a shoutout: no biographical facts, no lookups, nothing beyond a short, warm thanks.";
+            ? "Your only job is to thank them for SUPPORTING THE CHANNEL — not just \"for the sub\", so the same phrasing works for a resub, a gift, or Prime too. ONE OR TWO LINES ONLY. Use FRESH wording every time — a different opening and phrasing than a typical stock \"thanks for the sub!\" line, and different from how you've thanked people earlier in this chat. This is a quick thank-you, not a shoutout: no biographical facts, no lookups, nothing beyond a short, warm thanks."
+            : "Your only job is to thank them all together for SUPPORTING THE CHANNEL — not just \"for the sub\", so the same phrasing works for resubs, gifts, and Prime too — naming everyone briefly, in ONE short message. ONE OR TWO LINES TOTAL. Use FRESH wording every time — a different opening and phrasing than a typical stock line, and different from how you've thanked people earlier in this chat. This is a quick thank-you, not a shoutout: no biographical facts, no lookups.";
 
         lines.push(instruction);
         return lines.join("\n");

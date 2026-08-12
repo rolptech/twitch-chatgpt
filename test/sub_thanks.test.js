@@ -60,6 +60,9 @@ test('submysterygift + 5 tagged subgift => exactly one message, naming gifter + 
     assert.match(claudeCalls[0], /BigGifter/, 'prompt must name the gifter');
     assert.match(claudeCalls[0], /5 subs/, 'prompt must mention the count');
     assert.match(claudeCalls[0], /not a shoutout/i, 'prompt must state the short/no-shoutout rule');
+    assert.match(claudeCalls[0], /do not restate as news/i, 'prompt must tell Claude the announcement already happened');
+    assert.match(claudeCalls[0], /SUPPORTING THE CHANNEL/, 'prompt must use the "supporting the channel" framing');
+    assert.match(claudeCalls[0], /FRESH wording/i, 'prompt must explicitly ask for varied wording');
 });
 
 // ---------------------------------------------------------------------------
@@ -113,7 +116,10 @@ test('subscription => one message thanking the subscriber', async () => {
 
     assert.equal(sayCalls.length, 1);
     assert.equal(claudeCalls.length, 1);
-    assert.match(claudeCalls[0], /NewSubscriber just subscribed/);
+    assert.match(claudeCalls[0], /NewSubscriber just subscribed/, 'context must still name the subscriber for Claude');
+    assert.match(claudeCalls[0], /do not restate as news/i, 'must tell Claude not to re-announce (a separate announcer already did)');
+    assert.match(claudeCalls[0], /SUPPORTING THE CHANNEL/, 'must use "supporting the channel" framing, not just "for the sub"');
+    assert.match(claudeCalls[0], /FRESH wording/i, 'must explicitly ask for varied wording');
     assert.match(claudeCalls[0], /ONE OR TWO LINES/);
 });
 
@@ -141,6 +147,13 @@ test('20 subscriptions arriving faster than the interval => batched, never 20 me
     for (let i = 0; i < 20; i++) {
         assert.match(allPrompts, new RegExp(`Subscriber${i}\\b`), `Subscriber${i} missing from any prompt — dropped, not batched`);
     }
+    // the batched (>1 fact) prompt still carries the no-restate + variation +
+    // "supporting the channel" instructions, not just the single-fact path.
+    const batchedPrompt = claudeCalls.find((p) => /Subscriber1\b.*Subscriber2\b/s.test(p));
+    assert.ok(batchedPrompt, 'expected a batched prompt containing more than one subscriber');
+    assert.match(batchedPrompt, /do not restate as news/i);
+    assert.match(batchedPrompt, /SUPPORTING THE CHANNEL/);
+    assert.match(batchedPrompt, /FRESH wording/i);
 });
 
 // ---------------------------------------------------------------------------
