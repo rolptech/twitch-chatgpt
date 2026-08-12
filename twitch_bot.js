@@ -68,6 +68,35 @@ export class TwitchBot {
         this.client.on('raided', callback);
     }
 
+    // Sub + gift-sub thanks (11 Aug 2026 work order) — mirrors onRaided's
+    // shape exactly, one passthrough per tmi.js sub-family event. tmi.js
+    // internally emits both 'subscription' and 'sub' (and both 'resub' and
+    // 'subanniversary') for the same USERNOTICE; we only need to listen on
+    // one alias of each pair.
+    onSubscription(callback) {
+        this.client.on('subscription', callback);
+    }
+
+    onResub(callback) {
+        this.client.on('resub', callback);
+    }
+
+    onSubgift(callback) {
+        this.client.on('subgift', callback);
+    }
+
+    onSubmysterygift(callback) {
+        this.client.on('submysterygift', callback);
+    }
+
+    onAnonSubgift(callback) {
+        this.client.on('anonsubgift', callback);
+    }
+
+    onAnonSubmysterygift(callback) {
+        this.client.on('anonsubmysterygift', callback);
+    }
+
     say(channel, message) {
         // Use async/await syntax to handle promises
         (async () => {
