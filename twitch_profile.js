@@ -27,12 +27,30 @@ const GQL_ENDPOINT = "https://gql.twitch.tv/gql";
 // is exactly the case the timeout is for.
 const FETCH_TIMEOUT_MS = 2000;
 
+// ⛔ `panels` returns the INTERFACE type `Panel`, which exposes only `id` and
+// `type`. The readable content lives on the concrete `DefaultPanel`, so the
+// inline fragment below is REQUIRED — asking for `panels { title }` directly
+// fails GraphQL validation with `Cannot query field "title" on type "Panel"`,
+// and Twitch then returns a top-level `errors` array with NO `data` key.
+// (Measured against the live endpoint, 11 Aug 2026.)
+//
+// ⚠ That failure is SILENT here by construction: `body?.data?.user` resolves
+// `undefined` -> `null` -> fail-open, no enrichment, no chat error. Correct
+// behaviour, but it means an edit that breaks this fragment would quietly
+// strip ALL enrichment — description and last-broadcast too, not just panels.
 const PROFILE_QUERY = `
 query RaiderProfile($login: String!) {
   user(login: $login) {
     login
     displayName
     description
+    panels {
+      id
+      ... on DefaultPanel {
+        title
+        description
+      }
+    }
     lastBroadcast {
       title
       startedAt
@@ -132,6 +150,115 @@ export function cleanDescription(description, maxLen = 300) {
     if (!description) return "";
     const d = description.trim();
     return d.length > maxLen ? d.slice(0, maxLen).trim() : d;
+}
+
+// ---------------------------------------------------------------------------
+// Panel ("About" section) bio extraction.
+//
+// WHY THIS EXISTS: `description` is a single short field and plenty of DJs
+// leave it thin or generic while putting the real substance in a panel.
+// Measured case that motivated the build — cephy__, 11 Aug 2026:
+//   description : "Purveyor of the unheard- Dj, musician, poet, writer, gamer..."
+//   panel[0]    : "...I am a *musician* and *DJ* within the **ebm/gothic**
+//                  music genre. I record music under the names Cephy, N.0V8
+//                  and Beneath Stygian wings. Available for remixes..."
+// The genre, the aliases and the collab hook are ALL panel-only.
+//
+// ⛔ MEASURED YIELD, 59 channels sampled at random from the 12,246-name spine:
+// 43/59 have any panel at all, and 24/59 (41%) yield any usable text. This is
+// EXPECTED to return "" for most raiders — not a failure; the prompt builder
+// simply omits the line.
+//
+// ⛔⛔ THIS FUNCTION DOES NOT DECIDE WHAT A BIO IS. It does mechanical cleanup
+// only — flatten markdown, drop bullet-lists, drop shorts, cap length — and
+// hands the rest to Claude, which is already in the loop and is told in the
+// prompt to use only what describes the streamer.
+//
+// That split was arrived at by measurement, not preference. Three heuristic
+// bio-classifiers were built and tested against the 59-channel sample on
+// 11 Aug 2026:
+//   list-guard only          39% coverage — picked promo panels, DIY
+//                                           changelogs, "go follow my team"
+//   + first-person >= 2      10% coverage — picked PC spec lists and a
+//                                           donation pitch; 3 of 6 were bios
+//   + second-person penalty  14% coverage — same failures
+// ⇒ Every added rule was individually correct and the output stayed wrong,
+// which means the MECHANISM was wrong: a regex cannot tell a bio from a gear
+// list, and the model trivially can. Cost of handing it over: ~128 prompt
+// tokens vs ~75. ⚠ Do not "improve" this by adding a classifier back.
+// ---------------------------------------------------------------------------
+
+const PANEL_SCAN_DEPTH = 3;   // panels past the third are consistently links/socials/schedules
+// ⚠ Counts ALL words, deliberately. An earlier version counted only words of
+// >2 chars to avoid inflating on "I am a" — but that discards "DJ", which is
+// the single most informative token a DJ's bio can contain, and it dropped
+// "I am a DJ from Sydney playing happy hardcore and UK hardcore" entirely.
+// Measured on the 59-channel sample: >2-char>=8 and all-words>=10 give the
+// SAME 24/59 coverage, and all-words keeps that sentence. Same yield, fewer
+// false drops, simpler rule.
+const PANEL_MIN_WORDS = 10;   // below this it's a caption or a link label — not worth the tokens
+const PANEL_MAX_CHARS = 500;
+
+// Markdown -> flat prose. Panels are markdown and a raw dump reads as noise to
+// Claude: image blobs, URL soup, blockquote carets.
+function _flattenPanelMarkdown(text) {
+    return text
+        .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")   // images: drop entirely
+        .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links: keep the label, drop the URL
+        .replace(/https?:\/\/\S+/g, " ")         // bare URLs
+        .replace(/^\s*>+\s?/gm, "")              // blockquote carets (cephy__ wraps his bio in one)
+        .replace(/[*_`~]/g, "")                  // emphasis / code marks
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+// The one content rule that IS mechanical and does survive: bullet-shaped
+// panels are never prose about the streamer. Chat rules, schedules, gear
+// lists and socials are all bullet-shaped; bios are not. Dropping them is
+// pure token saving, not judgement — Claude would have ignored them anyway.
+//
+// Worked case: cephy__'s panel[1] is his chat rules ("Avoid racism, sexism...
+// No Bible-Thumping Soothsayers") and it has MORE words than his actual bio
+// in panel[0]. Structural detection, never a keyword blacklist.
+function _looksLikeList(rawText) {
+    const bulletLines = rawText
+        .split(/\r?\n/)
+        .filter((line) => /^\s*>?\s*([-*•+]|\d+[.)])\s+/.test(line));
+    return bulletLines.length >= 3;
+}
+
+// Cut to a word boundary — a mid-word truncation in the prompt reads as
+// corrupted input. (Same class of problem as the shoutout that was being cut
+// off mid-sentence, fixed 11 Aug in 05be366.)
+function _capAtWordBoundary(text, maxLen) {
+    if (text.length <= maxLen) return text;
+    const cut = text.slice(0, maxLen);
+    const lastSpace = cut.lastIndexOf(" ");
+    return (lastSpace > maxLen * 0.5 ? cut.slice(0, lastSpace) : cut).trim();
+}
+
+// Flattened text of the first few panels, joined, capped. "" when there is
+// nothing worth sending. Panels are kept in the streamer's own order — that
+// order is their choice and it usually puts the bio first.
+export function extractPanelText(panels, {
+    scanDepth = PANEL_SCAN_DEPTH,
+    minWords = PANEL_MIN_WORDS,
+    maxChars = PANEL_MAX_CHARS,
+} = {}) {
+    if (!Array.isArray(panels)) return "";
+
+    const parts = [];
+    for (const panel of panels.slice(0, scanDepth)) {
+        const raw = panel && panel.description;
+        if (!raw || !raw.trim()) continue;
+        if (_looksLikeList(raw)) continue;
+
+        const flat = _flattenPanelMarkdown(raw);
+        if (flat.split(" ").filter(Boolean).length < minWords) continue;
+        parts.push(flat);
+    }
+    if (!parts.length) return "";
+    return _capAtWordBoundary(parts.join(" | "), maxChars);
 }
 
 // startedAt -> a relative phrase, never a raw date (WO §3d: "say 'earlier
