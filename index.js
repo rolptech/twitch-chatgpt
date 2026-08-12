@@ -9,6 +9,7 @@ import {ClaudeOperations} from './claude_operations.js';
 import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
 import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase} from './twitch_profile.js';
+import {createSubThanks} from './sub_thanks.js';
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
 // engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
@@ -260,6 +261,48 @@ bot.onRaided(async (channel, username, viewers) => {
     } else {
         bot.say(channel, response);
     }
+});
+
+// ---------------------------------------------------------------------------
+// Sub + gift-sub thanks (2026-08-11 work order). ⛔ THANK-YOU, not a
+// shoutout: no twitch_profile.js call, no fetch of any kind — see
+// sub_thanks.js header for the full design (bulk-gift suppression via tag +
+// timing guard, and the independent throttle/batch queue for the sub path,
+// which is NOT gated by _cooldownActive — see sub_thanks.js and WO §5).
+//
+// isEnabled reads the same _botEnabled kill switch as every other Claude
+// path (!mbstop silences sub thanks too), via a closure so it always sees
+// the current value even though _botEnabled is reassigned later by the
+// !mbstop/!mbstart handler below.
+const subThanks = createSubThanks({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    maxLength: MAX_LENGTH,
+});
+
+bot.onSubscription((subChannel, username, methods, message, tags) => {
+    subThanks.onSubscription(subChannel, username, methods, message, tags);
+});
+
+bot.onResub((subChannel, username, streakMonths, message, tags, methods) => {
+    subThanks.onResub(subChannel, username, streakMonths, message, tags, methods);
+});
+
+bot.onSubgift((subChannel, username, streakMonths, recipient, methods, tags) => {
+    subThanks.onSubgift(subChannel, username, streakMonths, recipient, methods, tags);
+});
+
+bot.onSubmysterygift((subChannel, username, giftSubCount, methods, tags) => {
+    subThanks.onSubmysterygift(subChannel, username, giftSubCount, methods, tags);
+});
+
+bot.onAnonSubgift((subChannel, streakMonths, recipient, methods, tags) => {
+    subThanks.onAnonSubgift(subChannel, streakMonths, recipient, methods, tags);
+});
+
+bot.onAnonSubmysterygift((subChannel, giftSubCount, methods, tags) => {
+    subThanks.onAnonSubmysterygift(subChannel, giftSubCount, methods, tags);
 });
 
 // connect bot
