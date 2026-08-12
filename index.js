@@ -8,7 +8,7 @@ import {job} from './keep_alive.js';
 import {ClaudeOperations} from './claude_operations.js';
 import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
-import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase} from './twitch_profile.js';
+import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText} from './twitch_profile.js';
 import {createSubThanks} from './sub_thanks.js';
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
@@ -173,6 +173,22 @@ function _buildRaidPrompt(username, viewers, profile) {
         const description = cleanDescription(profile.description);
         if (description) {
             lines.push(`[About them: ${description}]`);
+        }
+
+        // Panel text is deliberately UNFILTERED beyond mechanical cleanup —
+        // see the long note in twitch_profile.js. The instruction below is
+        // the filter, and it has to stay attached to the data: three regex
+        // classifiers were tried first and all of them shipped gear lists and
+        // donation pitches into shoutouts. Claude does this reliably; regex
+        // does not.
+        const panelText = extractPanelText(profile.panels);
+        if (panelText) {
+            lines.push(
+                `[Raw text from their channel panels — may include chat rules, gear lists, ` +
+                `donation appeals or link labels. Use ONLY what genuinely describes them as ` +
+                `a DJ/streamer (genre, aliases, what they play, where they're from). Ignore ` +
+                `everything else, and never repeat donation appeals or link names: ${panelText}]`
+            );
         }
 
         if (profile.stream && profile.stream.id) {
