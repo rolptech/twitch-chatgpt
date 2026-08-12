@@ -124,6 +124,29 @@ const TRIGGER_REGEX_STRIP_ALL = new RegExp(TRIGGER_TOKENS.map(_triggerTokenToPat
 // (resets on restart) — no persistence needed for a rate limiter.
 const COOLDOWN_PER_USER_SEC = Number(process.env.COOLDOWN_PER_USER_SEC || 10);
 const COOLDOWN_GLOBAL_SEC = Number(process.env.COOLDOWN_GLOBAL_SEC || 5);
+
+// How long to hold a raid shoutout before posting it (Max, 12 Aug 2026).
+// ⛔ NOT a cooldown — it does not suppress anything, it delays one message.
+// Deliberately an env var so it can be retuned on Render without a deploy.
+// Set to 0 to post immediately (the pre-12-Aug behaviour).
+//
+// ⚠ Measured from the moment the raid arrives, NOT from the end of the
+// enrichment work: the fetch and the Claude call happen straight away and
+// only the POSTING waits out the remainder. Two reasons, and the first is
+// the load-bearing one:
+//   1. `stream { id }` -> "[They are LIVE right now.]" is a fact about the
+//      raider AT THE MOMENT THEY RAIDED. Raiders routinely end their stream
+//      seconds after raiding, so a fetch deferred by 30s would report them
+//      offline and silently drop a line that was true when it mattered.
+//   2. It makes the delay mean what it says — the message lands at ~30s, not
+//      at 30s plus however long Claude took.
+// ⚠ `??` not `||`, deliberately: with `||` a value of 0 would fall through to
+// the default and "post immediately" would be unreachable. And a malformed
+// value falls back to the DEFAULT rather than to 0 — a typo'd env var should
+// not silently turn the delay off, which is the failure nobody would notice.
+const _raidDelayRaw = Number(process.env.RAID_SHOUTOUT_DELAY_SEC ?? 30);
+const RAID_SHOUTOUT_DELAY_SEC =
+    Number.isFinite(_raidDelayRaw) && _raidDelayRaw >= 0 ? _raidDelayRaw : 30;
 const _lastFirePerUser = new Map(); // username (as given by tmi.js) -> ms epoch of last Claude fire
 let _lastFireGlobal = -Infinity;    // ms epoch of last Claude fire, any user
 
@@ -257,6 +280,8 @@ bot.onDisconnected((reason) => {
 bot.onRaided(async (channel, username, viewers) => {
     if (!_botEnabled) return; // kill switch: !mbstop mutes auto-welcomes too
 
+    const raidedAt = Date.now();
+
     // Fail-open by contract (twitch_profile.js): resolves null on a network
     // error, a timeout, or an unknown login — never throws, never delays
     // past its own ~2s budget. The welcome below fires either way.
@@ -264,6 +289,25 @@ bot.onRaided(async (channel, username, viewers) => {
 
     const text = _buildRaidPrompt(username, viewers, profile);
     const response = await claude_ops.make_claude_call(text);
+
+    // Hold the finished shoutout until RAID_SHOUTOUT_DELAY_SEC has elapsed
+    // since the raid landed. The work above is already done, so this waits
+    // only the REMAINDER — see the constant's note for why the fetch is not
+    // what gets deferred.
+    const remainingMs = RAID_SHOUTOUT_DELAY_SEC * 1000 - (Date.now() - raidedAt);
+    if (remainingMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remainingMs));
+    }
+
+    // ⛔⛔ RE-CHECK THE KILL SWITCH. The check at the top of this handler was
+    // taken up to 30 SECONDS AGO and !mbstop can land inside that window —
+    // without this, telling the bot to shut up would still be followed by a
+    // shoutout most of a minute later. This is the ONLY reason the delay
+    // needed more than a bare setTimeout.
+    if (!_botEnabled) {
+        console.log(`[mind_b0t] raid shoutout for ${username} dropped — kill switch flipped during the ${RAID_SHOUTOUT_DELAY_SEC}s delay`);
+        return;
+    }
 
     // Same MAX_LENGTH splitter used by every other path that posts a Claude
     // response to chat.
