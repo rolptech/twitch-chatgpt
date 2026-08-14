@@ -1,7 +1,12 @@
 // follow_thanks.js
 //
-// Short, varied acknowledgements for new followers (Max, 14 Aug 2026:
-// "shirt acknowledgements that change each time" — short, not shoutouts).
+// Varied welcomes for new followers (Max, 14 Aug 2026).
+//
+// Started as one short line at his request, widened the same morning after he
+// saw it live: "lets make it a bit fancier than that, 2-3 sentences with some
+// enthusiasm and creativity". Still NOT a shoutout — see _buildPrompt for the
+// line that matters, which is that creativity here means imagery and voice,
+// never invented facts about someone we know nothing about.
 //
 // Same module shape as sub_thanks.js: pure logic + injected side effects
 // (say/claudeCall/log), so it unit-tests with synthetic tmi.js-shaped input,
@@ -95,7 +100,9 @@ export function createFollowThanks({
         // would make this no better than the static alert it sits next to.
         return [
             `[Already announced in chat — do not restate as news: ${follower} just followed the channel.]`,
-            `Your only job is to welcome ${follower} warmly. ONE SHORT LINE — this is a quick acknowledgement, not a shoutout: no biographical facts, no lookups, no links, nothing about their channel. Use FRESH wording every time — a different opening and phrasing from a stock "thanks for the follow!" line, and different from how you've welcomed people earlier in this chat.`,
+            `Welcome ${follower} to the Mindverse with real enthusiasm. TWO OR THREE SENTENCES — room to be creative and vivid, but still a welcome, not a shoutout.`,
+            `⛔ You know NOTHING about ${follower} except that they just followed. Do NOT invent facts about them — no claims about their music, their channel, their skills or their history, and no links. The raid-shoutout path can embellish because it fetches a real profile first; this path has only a name. Creativity here means IMAGERY AND VOICE — the cosmic/synth/Mindverse register of the channel — not fiction about a stranger.`,
+            `Use FRESH wording every time: a different opening, different imagery, and a different shape from how you've welcomed people earlier in this chat.`,
         ].join("\n");
     }
 
