@@ -68,6 +68,8 @@
 // !song and trigger paths are. If that ever needs revisiting it is his call.
 // ---------------------------------------------------------------------------
 
+import { sayChunked } from './chunk_text.js';
+
 const DEFAULT_MAX_LENGTH = 399;
 const DEFAULT_ANNOUNCER = "streamelements";
 
@@ -114,14 +116,10 @@ export function createFollowThanks({
     }
 
     function _sayChunked(channel, text) {
-        if (text.length > maxLength) {
-            const parts = text.match(new RegExp(`.{1,${maxLength}}`, "g"));
-            parts.forEach((part, index) => {
-                setTimeoutFn(() => say(channel, part), 1000 * index);
-            });
-        } else {
-            say(channel, text);
-        }
+        // ⛔ Delegates to the shared splitter — this used to cut at exactly
+        // maxLength and split words in half ("immersive dr" / "ones."). See
+        // chunk_text.js; six copies of that bug existed, this was one.
+        sayChunked(say, channel, text, maxLength, setTimeoutFn);
     }
 
     // Call from index.js's bot.onMessage, BEFORE any command parsing.

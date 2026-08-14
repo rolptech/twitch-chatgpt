@@ -84,7 +84,41 @@ test('every prompt asks for varied substance, not just wording', async () => {
         const h = makeHarness();
         await h.instance.onMessage('#chan', USER, c);
         assert.match(h.claudeCalls[0], /vary the SUBSTANCE/i);
-        assert.match(h.claudeCalls[0], /Do NOT paraphrase that back/i);
+        assert.match(h.claudeCalls[0], /Do NOT reuse its WORDING/i);
+    }
+});
+
+test('⛔ "write freshly" and "keep the distinctions" are SEPARATE instructions', async () => {
+    // The Jarre bug, 14 Aug 2026: a single "do not paraphrase that back" was
+    // doing two jobs, and pushed the model away from the anchor's careful
+    // separation of German acts from non-German fellow travellers along with
+    // its wording. Result: Jean-Michel Jarre placed in West German studios,
+    // contradicting the anchor, which has it right.
+    for (const c of ALL) {
+        const h = makeHarness();
+        await h.instance.onMessage('#chan', USER, c);
+        const p = h.claudeCalls[0];
+        assert.match(p, /DO honour its DISTINCTIONS/i, `${c} lost the distinctions clause`);
+        assert.match(p, /never means collapsing a distinction/i);
+    }
+});
+
+test('⛔ the accuracy guard covers MISPLACEMENT, not only invention', async () => {
+    // Jarre is real and genuinely adjacent — he was not invented, he was put in
+    // the wrong country. "Do not invent" alone never catches that.
+    for (const c of ALL) {
+        const h = makeHarness();
+        await h.instance.onMessage('#chan', USER, c);
+        const p = h.claudeCalls[0];
+        assert.match(p, /never MISPLACE a real one/i, `${c} lost the misplacement clause`);
+        assert.match(p, /wrong country, decade or scene/i);
+    }
+});
+
+test('the nationality split is stated where the bug actually happened', () => {
+    for (const c of ['!kosmische', '!artists']) {
+        assert.match(TOPICS[c].inScope, /Jarre is French|Jean-Michel Jarre is French/,
+            `${c} should carry the distinction the anchor draws`);
     }
 });
 

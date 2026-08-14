@@ -93,6 +93,8 @@
 // would let chat traffic suppress a sub thank-you or the reverse) — this
 // module owns its own independent queue/timer state.
 
+import { sayChunked } from './chunk_text.js';
+
 const DEFAULT_INTERVAL_MS = 15000;
 const DEFAULT_BULK_WINDOW_MS = 10000;
 const DEFAULT_MAX_LENGTH = 399;
@@ -172,14 +174,10 @@ export function createSubThanks({
     }
 
     function _sayChunked(channel, text) {
-        if (text.length > maxLength) {
-            const parts = text.match(new RegExp(`.{1,${maxLength}}`, "g"));
-            parts.forEach((part, index) => {
-                setTimeoutFn(() => say(channel, part), 1000 * index);
-            });
-        } else {
-            say(channel, text);
-        }
+        // ⛔ Delegates to the shared splitter — this used to cut at exactly
+        // maxLength and split words in half ("immersive dr" / "ones."). See
+        // chunk_text.js; six copies of that bug existed, this was one.
+        sayChunked(say, channel, text, maxLength, setTimeoutFn);
     }
 
     async function _flush() {

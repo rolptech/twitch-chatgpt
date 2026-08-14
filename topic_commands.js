@@ -59,6 +59,8 @@
 // (the existing command path) is gated the same way.
 // ---------------------------------------------------------------------------
 
+import { sayChunked } from './chunk_text.js';
+
 const DEFAULT_MAX_LENGTH = 399;
 
 // Max's StreamElements text, verbatim as of 14 Aug 2026, except where noted.
@@ -66,7 +68,7 @@ export const TOPICS = {
     "!kosmische": {
         focus: "Kosmische Musik — what it is, where and when it came from",
         anchor: 'Kosmische Musik is a broad, overarching term for the experimental music scene that emerged across West Germany in the late 1960s and early 1970s. It was originally coined in 1971 by Edgar Froese of Tangerine Dream. While often used interchangeably with "Krautrock," Kosmische specifically emphasizes "spacy" ambient soundscapes, themes of otherworldliness.',
-        inScope: "the West German experimental scene of roughly 1968-1978 and its cosmic/synthesizer end: the artists, records, studios, labels and producers of that scene; how the term relates to and differs from Krautrock; the gear and studio methods that made the sound; the places it happened",
+        inScope: "the West German experimental scene of roughly 1968-1978 and its cosmic/synthesizer end: the artists, records, studios, labels and producers of that scene; how the term relates to and differs from Krautrock; the gear and studio methods that made the sound; the places it happened. The German acts and their non-German fellow travellers (Jean-Michel Jarre is French, Vangelis Greek, Brian Eno English) are DISTINCT groups — name the second kind as influences or parallels, never as part of the West German scene",
         drift: "the rock and funk end of Krautrock where that is the whole answer rather than a contrast; ambient history that is not German and not of this period; modern electronic or EDM lineage, which is what !tranceroots is for",
     },
     "!berlinschool": {
@@ -82,7 +84,7 @@ export const TOPICS = {
         // would have taught it to the generator on every firing.
         focus: "the artists of the Kosmische/Berlin School sound, original and next-generation",
         anchor: "The Kosmische/Berlin School sound was defined by German acts like Klaus Schulze, Tangerine Dream/Edgar Froese, Ashra, Harald Grosskopf, Michael Hoenig and fellow travelers Jean-Michel Jarre, Vangelis, and Brian Eno. Next Gen Berlin School artists include Steve Roach, Pete Namlook, Martin Sturtzer, Node, Mark Shreeve/Redshift, Kitaro, and many others.",
-        inScope: "people who actually made this music — the original German figures, their fellow travellers, and the later artists genuinely working in the idiom; a defining record or a line about what each one brought is better than a bare list",
+        inScope: "people who actually made this music — the original German figures, their fellow travellers, and the later artists genuinely working in the idiom; a defining record or a line about what each one brought is better than a bare list. Keep the German originals separate from the non-German fellow travellers — Jarre is French, Vangelis Greek, Eno English — as the reference text does",
         drift: "artists from adjacent genres with no real Kosmische/Berlin School connection; padding the list with modern EDM or trance names, which belong in !tranceroots",
     },
     "!tranceroots": {
@@ -126,21 +128,20 @@ export function createTopicCommands({
             `A viewer in a Twitch DJ stream typed ${command}. The streamer plays this music live; the people reading know the genre. Answer it: explain ${t.focus}.`,
             `The channel's own reference text on this topic — ACCURATE, and it sets the depth and register:`,
             `---\n${t.anchor}\n---`,
-            `⭐ Do NOT paraphrase that back. Write a FRESH answer every time and vary the SUBSTANCE, not just the wording: lead with a different aspect and bring in different artists, records or details than the reference uses. Someone firing this twice in a night should learn something new the second time.`,
+            `⭐ Do NOT reuse its WORDING. Write a FRESH answer every time and vary the SUBSTANCE: lead with a different aspect and bring in different artists, records or details than the reference uses. Someone firing this twice in a night should learn something new the second time.`,
+            `⛔ But DO honour its DISTINCTIONS. Where the reference separates things — nationalities, eras, who was central versus who was an adjacent influence — those separations are correct and deliberate. Writing freshly means new words and new material; it never means collapsing a distinction the reference draws.`,
             `IN SCOPE — choose freely from: ${t.inScope}.`,
             `⛔ TOO FAR AFIELD — do not drift into: ${t.drift}.`,
-            `⛔ Vary WHICH TRUE FACTS you surface — never invent one. No made-up album titles, dates, personnel or quotes. If you are not confident something is correct, leave it out and say something you are sure of instead. This goes out in the streamer's chat under his name, to an audience that will notice.`,
+            `⛔ Vary WHICH TRUE FACTS you surface — never invent one, and never MISPLACE a real one. Nationality, period and who worked with whom are facts too: putting a real artist in the wrong country, decade or scene is as wrong as inventing an album title. No made-up titles, dates, personnel or quotes. If you are not confident, leave it out and say something you are sure of instead. This goes out in the streamer's chat under his name, to an audience that will notice.`,
             `Aim for about ${_targetChars(command)} characters — roughly half again as long as the reference text, so use the extra room for substance rather than padding. No lists, no links, no markdown. Conversational, knowledgeable, enthusiastic without being breathless.`,
         ].join("\n");
     }
 
     function _sayChunked(channel, text) {
-        if (text.length > maxLength) {
-            const parts = text.match(new RegExp(`.{1,${maxLength}}`, "g"));
-            parts.forEach((part, index) => setTimeoutFn(() => say(channel, part), 1000 * index));
-        } else {
-            say(channel, text);
-        }
+        // ⛔ Delegates to the shared splitter — this used to cut at exactly
+        // maxLength and split words in half ("immersive dr" / "ones."). See
+        // chunk_text.js; six copies of that bug existed, this was one.
+        sayChunked(say, channel, text, maxLength, setTimeoutFn);
     }
 
     async function onMessage(channel, user, message) {
