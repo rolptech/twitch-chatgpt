@@ -10,6 +10,7 @@ import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
 import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText} from './twitch_profile.js';
 import {createSubThanks} from './sub_thanks.js';
+import {createFollowThanks} from './follow_thanks.js';
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
 // engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
@@ -341,6 +342,25 @@ const subThanks = createSubThanks({
     maxLength: MAX_LENGTH,
 });
 
+// Follower welcomes (14 Aug 2026). Unlike every other handler here this one is
+// driven by a CHAT MESSAGE, not a tmi.js event — follows are not an IRC event
+// and never have been, so there is nothing for bot.onFollow to hook. It watches
+// for StreamElements' own follow announcement instead; see follow_thanks.js.
+//
+// ⛔ FOLLOW_ANNOUNCER is a security boundary, not configuration convenience:
+// the trigger is a plain string any viewer could type. Only messages FROM this
+// account are examined. Default "streamelements".
+//
+// ⛔ Deliberately NOT gated by _cooldownActive — Max, 14 Aug 2026, explicitly:
+// no rate limiting and no cooldown on this path. Ten follows means ten replies.
+const followThanks = createFollowThanks({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    announcer: process.env.FOLLOW_ANNOUNCER || "streamelements",
+    maxLength: MAX_LENGTH,
+});
+
 bot.onSubscription((subChannel, username, methods, message, tags) => {
     subThanks.onSubscription(subChannel, username, methods, message, tags);
 });
@@ -378,6 +398,13 @@ bot.connect(
 
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
+
+    // Follow welcomes, checked before any command parsing. Returns true only
+    // when the message really was StreamElements' follow announcement, so a
+    // normal chat line falls straight through at the cost of one string
+    // compare. Awaited so a Claude failure inside cannot reject unhandled —
+    // it swallows its own errors and logs them.
+    if (await followThanks.onMessage(channel, user, message)) return;
 
     const _msg = message.trim().toLowerCase();
 
