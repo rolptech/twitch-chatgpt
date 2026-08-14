@@ -12,6 +12,7 @@ import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, ex
 import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
 import {createCheerThanks} from './cheer_thanks.js';
+import {createTopicCommands} from './topic_commands.js';
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
 // engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
@@ -379,6 +380,24 @@ bot.onCheer((cheerChannel, tags, message) => {
     cheerThanks.onCheer(cheerChannel, tags, message);
 });
 
+// !kosmische · !berlinschool · !artists · !tranceroots (14 Aug 2026) — moved off
+// StreamElements, where they were fixed strings. Generated fresh each firing,
+// scoped rather than scripted; see topic_commands.js for what Max ruled may vary.
+//
+// ⚠ These DO take the shared cooldowns, unlike the follow and cheer paths. That
+// is not a departure from his "no cooldown" instruction — that instruction was
+// about event-driven replies nobody can spam. These are viewer-typed commands,
+// SE gated them at 5s/15s, and !song (the other command path) is gated the same
+// way. Preserving existing behaviour, not adding a rule.
+const topicCommands = createTopicCommands({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    cooldownActive: (username) => _cooldownActive(username),
+    markFired: (username) => _markFired(username),
+    maxLength: MAX_LENGTH,
+});
+
 bot.onSubscription((subChannel, username, methods, message, tags) => {
     subThanks.onSubscription(subChannel, username, methods, message, tags);
 });
@@ -423,6 +442,10 @@ bot.onMessage(async (channel, user, message, self) => {
     // compare. Awaited so a Claude failure inside cannot reject unhandled —
     // it swallows its own errors and logs them.
     if (await followThanks.onMessage(channel, user, message)) return;
+
+    // Topic commands, checked before the general command parsing below. Matches
+    // on the first token only, so an ordinary chat line costs one lookup.
+    if (await topicCommands.onMessage(channel, user, message)) return;
 
     const _msg = message.trim().toLowerCase();
 
