@@ -51,6 +51,8 @@
 // instruction there. Not wired to _cooldownActive.
 // ---------------------------------------------------------------------------
 
+import { sayChunked } from './chunk_text.js';
+
 const DEFAULT_MAX_LENGTH = 399;
 const DEFAULT_MESSAGE_CAP = 200;
 
@@ -111,15 +113,11 @@ export function createCheerThanks({
         return lines.join("\n");
     }
 
-    function _sayChunked(channel, textOut) {
-        if (textOut.length > maxLength) {
-            const parts = textOut.match(new RegExp(`.{1,${maxLength}}`, "g"));
-            parts.forEach((part, index) => {
-                setTimeoutFn(() => say(channel, part), 1000 * index);
-            });
-        } else {
-            say(channel, textOut);
-        }
+    function _sayChunked(channel, text) {
+        // ⛔ Delegates to the shared splitter — this used to cut at exactly
+        // maxLength and split words in half ("immersive dr" / "ones."). See
+        // chunk_text.js; six copies of that bug existed, this was one.
+        sayChunked(say, channel, text, maxLength, setTimeoutFn);
     }
 
     // tmi.js 'cheer' => (channel, tags, message). See the header: this signature
