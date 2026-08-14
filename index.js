@@ -448,15 +448,20 @@ bot.connect(
 // granted BY THE BROADCASTER. TWITCH_AUTH belongs to mind_bot2 and cannot carry
 // that scope for mind_prime's channel.
 //
-// ⭐ So this stays INERT until EVENTSUB_TOKEN and EVENTSUB_CLIENT_ID are set on
-// Render. Absent them it logs once and does nothing — it does not throw, does
-// not retry, and cannot affect the chat bot. A half-configured EventSub must
-// never be able to take down chat, which is the part that actually matters.
-const EVENTSUB_TOKEN = process.env.EVENTSUB_TOKEN || "";
+// ⛔ THE CREDENTIAL IS A REFRESH TOKEN, NOT AN ACCESS TOKEN. Measured on Max's
+// live token, 14 Aug 2026: expires_in 13742 seconds — 3.8 hours. A static access
+// token would work for one afternoon and then die on a 401 nobody sees, because
+// the WEBSOCKET stays happily connected while the SUBSCRIPTION is what expires.
+//
+// ⭐ So this stays INERT until all three are set on Render. Absent them it logs
+// once and does nothing — no throw, no retry, no effect on chat. A
+// half-configured EventSub must never be able to take down the chat bot.
 const EVENTSUB_CLIENT_ID = process.env.EVENTSUB_CLIENT_ID || "";
+const EVENTSUB_CLIENT_SECRET = process.env.EVENTSUB_CLIENT_SECRET || "";
+const EVENTSUB_REFRESH_TOKEN = process.env.EVENTSUB_REFRESH_TOKEN || "";
 const _hypeChannel = Array.isArray(CHANNELS) && CHANNELS.length ? CHANNELS[0] : null;
 
-if (EVENTSUB_TOKEN && EVENTSUB_CLIENT_ID && _hypeChannel) {
+if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _hypeChannel) {
     const hypeTrain = createHypeTrain({
         say: (sayChannel, message) => bot.say(sayChannel, message),
         channel: _hypeChannel,
@@ -468,7 +473,8 @@ if (EVENTSUB_TOKEN && EVENTSUB_CLIENT_ID && _hypeChannel) {
 
     const eventSub = createEventSub({
         clientId: EVENTSUB_CLIENT_ID,
-        accessToken: EVENTSUB_TOKEN,
+        clientSecret: EVENTSUB_CLIENT_SECRET,
+        refreshToken: EVENTSUB_REFRESH_TOKEN,
         broadcasterLogin: String(_hypeChannel).replace(/^#/, ""),
         subscriptions: [{type: "channel.hype_train.begin", version: "2"}],
         onNotification: (type, event) => hypeTrain.onNotification(type, event),
@@ -478,7 +484,7 @@ if (EVENTSUB_TOKEN && EVENTSUB_CLIENT_ID && _hypeChannel) {
 
     eventSub.connect();
 } else {
-    console.log("[eventsub] disabled — set EVENTSUB_TOKEN and EVENTSUB_CLIENT_ID to enable hype train messages");
+    console.log("[eventsub] disabled — set EVENTSUB_CLIENT_ID, EVENTSUB_CLIENT_SECRET and EVENTSUB_REFRESH_TOKEN to enable hype train messages");
 }
 
 bot.onMessage(async (channel, user, message, self) => {

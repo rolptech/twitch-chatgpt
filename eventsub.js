@@ -47,6 +47,7 @@
 const WSS_URL = "wss://eventsub.wss.twitch.tv/ws";
 const SUBSCRIPTIONS_URL = "https://api.twitch.tv/helix/eventsub/subscriptions";
 const USERS_URL = "https://api.twitch.tv/helix/users";
+const TOKEN_URL = "https://id.twitch.tv/oauth2/token";
 
 // Backoff for reconnects after a drop. Capped — a bot that is down should keep
 // trying at a sane interval, not give up and not hammer.
@@ -54,7 +55,9 @@ const BACKOFF_MS = [1000, 2000, 5000, 10000, 30000, 60000];
 
 export function createEventSub({
     clientId,
-    accessToken,                       // USER token for the broadcaster
+    clientSecret,                      // needed to refresh; confidential client
+    refreshToken,                      // the durable credential — see the note below
+    accessToken = "",                  // optional seed; refreshed when it expires
     broadcasterLogin,                  // resolved to an id at connect time
     subscriptions = [],                // [{type, version}] — condition is filled in
     onNotification = () => {},         // (type, event) => void
@@ -81,19 +84,76 @@ export function createEventSub({
     // value used until the first welcome arrives.
     let _lastKeepaliveSeconds = 10;
 
+    // ⛔ USER ACCESS TOKENS EXPIRE — measured, not assumed: Max's live token
+    // reported expires_in 13742 (3.8 hours) on 14 Aug 2026. An earlier draft of
+    // this module took a static access token, which would have worked for one
+    // afternoon and then failed on a 401 that nobody would see, because the
+    // socket stays happily connected while the SUBSCRIPTION is what dies.
+    //
+    // ⇒ The durable credential is the REFRESH token. The access token is derived
+    // and disposable.
+    let _accessToken = accessToken;
+
+    async function _refreshAccessToken() {
+        if (!refreshToken || !clientSecret) {
+            throw new Error("cannot refresh: EVENTSUB_REFRESH_TOKEN and EVENTSUB_CLIENT_SECRET are required");
+        }
+        const body = new URLSearchParams({
+            grant_type: "refresh_token",
+            refresh_token: refreshToken,
+            client_id: clientId,
+            client_secret: clientSecret,
+        });
+        const res = await fetchImpl(TOKEN_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: body.toString(),
+        });
+        if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new Error(`token refresh failed: ${res.status} ${text.slice(0, 200)}`);
+        }
+        const json = await res.json();
+        _accessToken = json.access_token;
+        log("[eventsub] access token refreshed");
+
+        // ⚠ Twitch MAY rotate the refresh token. This process cannot persist a
+        // new one back to Render's env, so the rotation would survive until the
+        // next restart and then fail. Loud, because it is otherwise invisible
+        // until a redeploy weeks later.
+        if (json.refresh_token && json.refresh_token !== refreshToken) {
+            log("[eventsub] ⛔ TWITCH ROTATED THE REFRESH TOKEN. Update EVENTSUB_REFRESH_TOKEN on Render or this breaks at the next restart.");
+            refreshToken = json.refresh_token;
+        }
+        return _accessToken;
+    }
+
     function _headers() {
         return {
             "Client-Id": clientId,
-            "Authorization": `Bearer ${accessToken}`,
+            "Authorization": `Bearer ${_accessToken}`,
             "Content-Type": "application/json",
         };
     }
 
+    // Runs `fn`, and if it comes back 401 refreshes once and runs it again.
+    // ⛔ ONE retry, deliberately: a 401 that survives a fresh token is a missing
+    // SCOPE, not an expired credential, and retrying that forever is a loop.
+    async function _withAuth(fn) {
+        if (!_accessToken) await _refreshAccessToken();
+        let res = await fn();
+        if (res && res.status === 401) {
+            log("[eventsub] 401 — refreshing and retrying once");
+            await _refreshAccessToken();
+            res = await fn();
+        }
+        return res;
+    }
+
     async function _resolveBroadcasterId() {
         if (_broadcasterId) return _broadcasterId;
-        const res = await fetchImpl(`${USERS_URL}?login=${encodeURIComponent(broadcasterLogin)}`, {
-            headers: _headers(),
-        });
+        const res = await _withAuth(() => fetchImpl(
+            `${USERS_URL}?login=${encodeURIComponent(broadcasterLogin)}`, {headers: _headers()}));
         if (!res.ok) throw new Error(`user lookup failed: ${res.status}`);
         const body = await res.json();
         const user = body && body.data && body.data[0];
@@ -112,9 +172,9 @@ export function createEventSub({
                 condition: sub.condition || { broadcaster_user_id: id },
                 transport: { method: "websocket", session_id: _sessionId },
             };
-            const res = await fetchImpl(SUBSCRIPTIONS_URL, {
+            const res = await _withAuth(() => fetchImpl(SUBSCRIPTIONS_URL, {
                 method: "POST", headers: _headers(), body: JSON.stringify(body),
-            });
+            }));
             if (res.ok) {
                 log(`[eventsub] subscribed ${sub.type} v${sub.version}`);
             } else {
