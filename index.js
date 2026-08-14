@@ -13,7 +13,13 @@ import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
 import {createCheerThanks} from './cheer_thanks.js';
 import {createTopicCommands} from './topic_commands.js';
-import {chunkText} from './chunk_text.js';
+import {chunkText, sayChunked} from './chunk_text.js';
+import {createShoutout, profileLines} from './shoutout.js';
+
+// The four cleaners profileLines needs, bundled once so both shoutout paths
+// pass the same set. Injected rather than imported inside shoutout.js so that
+// module stays testable without twitch_profile.js or any network.
+const _profileHelpers = {cleanDescription, extractPanelText, cleanTitle, relativeTimePhrase};
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
 // engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
@@ -193,47 +199,19 @@ function _isModOrBroadcaster(user) {
 //
 // Deliberately NOT wrapped with the SEND_USERNAME "Message from user..."
 // prefix used on the trigger path — the first line already names the raider.
+//
+// ⛔ The profile block itself now lives in shoutout.js and is SHARED with the
+// manual "SO <name>" command (14 Aug 2026). It was extracted rather than copied
+// because the panel-handling instruction is load-bearing — three regex
+// classifiers were tried before it and every one shipped gear lists and
+// donation pitches into shoutouts — and a second copy would drift from this one.
+//
+// ⚠ The two paths differ in exactly one way, deliberately: this one FAILS OPEN
+// (a raid is real and time-critical, so a failed fetch still produces a welcome
+// from username + viewer count), and the manual one FAILS CLOSED. See shoutout.js.
 function _buildRaidPrompt(username, viewers, profile) {
     const lines = [`[RAID] ${username} just raided the channel with ${viewers} viewers.`];
-
-    if (profile) {
-        const description = cleanDescription(profile.description);
-        if (description) {
-            lines.push(`[About them: ${description}]`);
-        }
-
-        // Panel text is deliberately UNFILTERED beyond mechanical cleanup —
-        // see the long note in twitch_profile.js. The instruction below is
-        // the filter, and it has to stay attached to the data: three regex
-        // classifiers were tried first and all of them shipped gear lists and
-        // donation pitches into shoutouts. Claude does this reliably; regex
-        // does not.
-        const panelText = extractPanelText(profile.panels);
-        if (panelText) {
-            lines.push(
-                `[Raw text from their channel panels — may include chat rules, gear lists, ` +
-                `donation appeals or link labels. Use ONLY what genuinely describes them as ` +
-                `a DJ/streamer (genre, aliases, what they play, where they're from). Ignore ` +
-                `everything else, and never repeat donation appeals or link names: ${panelText}]`
-            );
-        }
-
-        if (profile.stream && profile.stream.id) {
-            lines.push(`[They are LIVE right now.]`);
-        }
-
-        const lastBroadcast = profile.lastBroadcast;
-        const title = lastBroadcast ? cleanTitle(lastBroadcast.title) : "";
-        if (title) {
-            const category = lastBroadcast.game && lastBroadcast.game.name
-                ? ` in ${lastBroadcast.game.name}`
-                : "";
-            const when = relativeTimePhrase(lastBroadcast.startedAt);
-            const whenPart = when ? `, ${when}` : "";
-            lines.push(`[Their last stream: "${title}"${category}${whenPart}]`);
-        }
-    }
-
+    lines.push(...profileLines(profile, _profileHelpers));
     lines.push("Give them a warm, in-character welcome and shoutout.");
     return lines.join("\n");
 }
@@ -390,6 +368,28 @@ bot.onCheer((cheerChannel, tags, message) => {
 // about event-driven replies nobody can spam. These are viewer-typed commands,
 // SE gated them at 5s/15s, and !song (the other command path) is gated the same
 // way. Preserving existing behaviour, not adding a rule.
+// Manual "SO <name>" — the same fetch the raid path uses (14 Aug 2026).
+//
+// ⚠ cooldownActive/markFired are deliberately NO-OPS here: the trigger block
+// that calls this has already checked the cooldown and marked the fire before
+// stripping the token. The module keeps its own hooks so it is testable and so a
+// future caller outside that block still gets gating — but wiring them here too
+// would charge one message against the limit twice.
+const shoutout = createShoutout({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    fetchProfile: (login) => fetchRaiderProfile(login),
+    helpers: _profileHelpers,
+    isEnabled: () => _botEnabled,
+    // Same predicate the kill switch uses — one definition of "mod or
+    // broadcaster", not a second one that can drift from it.
+    isAllowed: (user) => _isModOrBroadcaster(user),
+    cooldownActive: () => false,
+    markFired: () => {},
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+});
+
 const topicCommands = createTopicCommands({
     say: (sayChannel, message) => bot.say(sayChannel, message),
     claudeCall: (text) => claude_ops.make_claude_call(text),
@@ -519,6 +519,15 @@ bot.onMessage(async (channel, user, message, self) => {
 
         // Strip the matched trigger token so Claude gets a clean message.
         let text = message.replace(TRIGGER_REGEX_STRIP_ALL, "").replace(/\s+/g, ' ').trim();
+
+        // "SO <name>" is a real command now, with the same profile fetch the raid
+        // path uses, instead of six words handed to a generic chatbot (14 Aug 2026).
+        // ⛔ Checked AFTER the token is stripped — the raw message still contains
+        // the trigger, and matching against that would need the pattern to know
+        // about trigger tokens, which is the wrong module's business.
+        // ⚠ _markFired has already run above, so the shoutout path must NOT mark
+        // again; one message must cost one cooldown, not two.
+        if (await shoutout.onTriggered(channel, user, text)) return;
 
         if (SEND_USERNAME) {
             text = "Message from user " + user.username + ": " + text
