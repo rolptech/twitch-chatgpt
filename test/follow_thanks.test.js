@@ -118,7 +118,22 @@ test('the prompt carries the follower and forbids re-announcing', async () => {
     assert.match(p, /VladdyPoe/);
     assert.match(p, /do not restate as news/i);
     assert.match(p, /FRESH wording/i);
-    assert.match(p, /ONE SHORT LINE/i);
+    assert.match(p, /TWO OR THREE SENTENCES/i);
+});
+
+test('the prompt forbids inventing facts about someone we know nothing about', () => {
+    // Max widened this from one line to 2-3 sentences "with some enthusiasm and
+    // creativity" on 14 Aug 2026. The raid-shoutout path may embellish because
+    // it fetches a real profile first; this path has only a username, so the
+    // same licence would produce confident fiction about a stranger.
+    const h = makeHarness();
+    return h.instance.onMessage('#chan', SE, REAL_LINE).then(() => {
+        const p = h.claudeCalls[0];
+        assert.match(p, /know NOTHING about VladdyPoe/i);
+        assert.match(p, /Do NOT invent facts/i);
+        assert.match(p, /IMAGERY AND VOICE/i);
+        assert.match(p, /no links/i);
+    });
 });
 
 test('the announcer\'s OTHER messages are left alone', async () => {
