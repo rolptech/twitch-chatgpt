@@ -97,6 +97,22 @@ export class TwitchBot {
         this.client.on('anonsubmysterygift', callback);
     }
 
+    // Bits/cheers (14 Aug 2026). ⛔ NOT a USERNOTICE like the sub family above —
+    // verified in tmi.js@1.8.5 lib/client.js:1089, a cheer is a PRIVMSG that
+    // carries a `bits` tag:
+    //
+    //     if(_.hasOwn(message.tags, 'bits')) {
+    //         this.emit('cheer', channel, message.tags, msg);
+    //     }
+    //
+    // So the callback shape is (channel, tags, message) — three args, NOT the
+    // (channel, username, ...) shape every handler above uses. The cheerer is in
+    // tags, not a positional argument, and getting that wrong yields a silently
+    // undefined username rather than an error.
+    onCheer(callback) {
+        this.client.on('cheer', callback);
+    }
+
     say(channel, message) {
         // Use async/await syntax to handle promises
         (async () => {
