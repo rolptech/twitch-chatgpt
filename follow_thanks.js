@@ -15,10 +15,17 @@
 // ---------------------------------------------------------------------------
 // WHY THIS READS CHAT INSTEAD OF LISTENING FOR A FOLLOW EVENT
 //
-// Follows are NOT an IRC event and never have been. tmi.js gives us raids,
-// subs, gift subs and cheers because those arrive as IRC USERNOTICE; a follow
-// arrives nowhere on IRC. The real event needs EventSub (channel.follow, scope
+// Follows are NOT an IRC event and never have been. tmi.js gives us raids, subs
+// and gift subs because those arrive as IRC USERNOTICE, and cheers because they
+// arrive as a PRIVMSG carrying a `bits` tag; a follow arrives on NEITHER path,
+// and nowhere else on IRC. The real event needs EventSub (channel.follow, scope
 // moderator:read:followers) — a second connection this bot does not have.
+//
+// ⚠ That USERNOTICE/PRIVMSG split was stated wrongly here when this file was
+// merged — cheers were lumped in with the sub family. Corrected 14 Aug 2026
+// against tmi.js@1.8.5 lib/client.js:1089. The conclusion never depended on it
+// (a follow is on no IRC path at all), but the stated mechanism was wrong, and
+// the next person to build an event handler would have read it as authoritative.
 //
 // StreamElements already announces follows in chat, so this watches for that
 // announcement instead. Cheaper than EventSub and uses machinery already here.

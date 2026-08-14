@@ -11,6 +11,7 @@ import {TwitchBot} from './twitch_bot.js';
 import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText} from './twitch_profile.js';
 import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
+import {createCheerThanks} from './cheer_thanks.js';
 
 // WO (11 Aug 2026, §3b2): nothing pins the Node version this runs on — no
 // engines field, no .nvmrc, render.yaml just says "runtime: node" — and the
@@ -359,6 +360,23 @@ const followThanks = createFollowThanks({
     isEnabled: () => _botEnabled,
     announcer: process.env.FOLLOW_ANNOUNCER || "streamelements",
     maxLength: MAX_LENGTH,
+});
+
+// Bits/cheers (14 Aug 2026). ⛔ Unlike follows, this one runs off the REAL
+// event — a cheer is visible to us, a follow is not. So there is no third-party
+// wording to depend on, nothing to break silently, and no announcer check.
+//
+// ⛔ Signature is (channel, tags, message), NOT the sub family's
+// (channel, username, ...) — see twitch_bot.js onCheer and cheer_thanks.js.
+const cheerThanks = createCheerThanks({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    maxLength: MAX_LENGTH,
+});
+
+bot.onCheer((cheerChannel, tags, message) => {
+    cheerThanks.onCheer(cheerChannel, tags, message);
 });
 
 bot.onSubscription((subChannel, username, methods, message, tags) => {
