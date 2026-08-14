@@ -15,6 +15,9 @@ import {createCheerThanks} from './cheer_thanks.js';
 import {createTopicCommands} from './topic_commands.js';
 import {chunkText, sayChunked} from './chunk_text.js';
 import {createShoutout, profileLines} from './shoutout.js';
+import {createEventSub} from './eventsub.js';
+import {createHypeTrain} from './hype_train.js';
+import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
 // pass the same set. Injected rather than imported inside shoutout.js so that
@@ -433,6 +436,56 @@ bot.connect(
         console.log(error);
     }
 );
+
+// ---------------------------------------------------------------------------
+// EventSub — hype trains (14 Aug 2026)
+// ---------------------------------------------------------------------------
+// ⛔ A hype train is NOT an IRC event, so tmi.js cannot see one. This is a
+// SECOND connection to Twitch, with its own auth, alongside the chat socket.
+//
+// ⛔ IT NEEDS A TOKEN THE BOT DOES NOT ALREADY HAVE. WebSocket EventSub rejects
+// app access tokens, and channel.hype_train.begin needs channel:read:hype_train
+// granted BY THE BROADCASTER. TWITCH_AUTH belongs to mind_bot2 and cannot carry
+// that scope for mind_prime's channel.
+//
+// ⛔ THE CREDENTIAL IS A REFRESH TOKEN, NOT AN ACCESS TOKEN. Measured on Max's
+// live token, 14 Aug 2026: expires_in 13742 seconds — 3.8 hours. A static access
+// token would work for one afternoon and then die on a 401 nobody sees, because
+// the WEBSOCKET stays happily connected while the SUBSCRIPTION is what expires.
+//
+// ⭐ So this stays INERT until all three are set on Render. Absent them it logs
+// once and does nothing — no throw, no retry, no effect on chat. A
+// half-configured EventSub must never be able to take down the chat bot.
+const EVENTSUB_CLIENT_ID = process.env.EVENTSUB_CLIENT_ID || "";
+const EVENTSUB_CLIENT_SECRET = process.env.EVENTSUB_CLIENT_SECRET || "";
+const EVENTSUB_REFRESH_TOKEN = process.env.EVENTSUB_REFRESH_TOKEN || "";
+const _hypeChannel = Array.isArray(CHANNELS) && CHANNELS.length ? CHANNELS[0] : null;
+
+if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _hypeChannel) {
+    const hypeTrain = createHypeTrain({
+        say: (sayChannel, message) => bot.say(sayChannel, message),
+        channel: _hypeChannel,
+        claudeCall: (text) => claude_ops.make_claude_call(text),
+        isEnabled: () => _botEnabled,
+        sayChunkedFn: sayChunked,
+        maxLength: MAX_LENGTH,
+    });
+
+    const eventSub = createEventSub({
+        clientId: EVENTSUB_CLIENT_ID,
+        clientSecret: EVENTSUB_CLIENT_SECRET,
+        refreshToken: EVENTSUB_REFRESH_TOKEN,
+        broadcasterLogin: String(_hypeChannel).replace(/^#/, ""),
+        subscriptions: [{type: "channel.hype_train.begin", version: "2"}],
+        onNotification: (type, event) => hypeTrain.onNotification(type, event),
+        WebSocketImpl: WebSocket,
+        log: console.log,
+    });
+
+    eventSub.connect();
+} else {
+    console.log("[eventsub] disabled — set EVENTSUB_CLIENT_ID, EVENTSUB_CLIENT_SECRET and EVENTSUB_REFRESH_TOKEN to enable hype train messages");
+}
 
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
