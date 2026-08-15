@@ -18,6 +18,7 @@ import {createShoutout, profileLines} from './shoutout.js';
 import {createEventSub} from './eventsub.js';
 import {createHypeTrain} from './hype_train.js';
 import {createWatchStreak} from './watch_streak.js';
+import {createChatWelcome} from './chat_welcome.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -42,6 +43,11 @@ const expressWsInstance = expressWs(app);
 
 // set the view engine to ejs
 app.set('view engine', 'ejs');
+
+// The channel this bot serves, needed before the module setups below. CHANNELS
+// is split into an array further down; this reads the raw env so ordering does
+// not matter.
+const _hypeChannelName = String(process.env.CHANNELS || "").split(",")[0].trim();
 
 // load env variables
 let GPT_MODE = process.env.GPT_MODE // CHAT or PROMPT
@@ -414,6 +420,25 @@ const shoutout = createShoutout({
     maxLength: MAX_LENGTH,
 });
 
+// First-message-of-stream welcomes (15 Aug 2026). Max greets people by hand
+// today and calls it "a huge pain in the ass" — this replaces that.
+//
+// ⛔ Twitch has NO per-stream marker, so the module tracks who it has seen and
+// is reset by EventSub stream.online below. In memory, deliberately: his ruling
+// is not to redeploy mid-stream rather than to persist it.
+//
+// ⚠ Deliberately NOT gated by _cooldownActive. It fires once per person per
+// stream by construction, which is a tighter bound than any cooldown.
+const chatWelcome = createChatWelcome({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    broadcaster: String(_hypeChannelName || "").replace(/^#/, ""),
+    delaySec: Number(process.env.WELCOME_DELAY_SEC ?? 5),
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+});
+
 const topicCommands = createTopicCommands({
     say: (sayChannel, message) => bot.say(sayChannel, message),
     claudeCall: (text) => claude_ops.make_claude_call(text),
@@ -497,8 +522,16 @@ if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _h
         clientSecret: EVENTSUB_CLIENT_SECRET,
         refreshToken: EVENTSUB_REFRESH_TOKEN,
         broadcasterLogin: String(_hypeChannel).replace(/^#/, ""),
-        subscriptions: [{type: "channel.hype_train.begin", version: "2"}],
-        onNotification: (type, event) => hypeTrain.onNotification(type, event),
+        subscriptions: [
+            {type: "channel.hype_train.begin", version: "2"},
+            // ⛔ stream.online needs NO scope — it is the reset signal for the
+            // chat-welcome seen-list, not a data read.
+            {type: "stream.online", version: "1"},
+        ],
+        onNotification: (type, event) => {
+            if (type === "stream.online") { chatWelcome.reset("stream.online"); return; }
+            hypeTrain.onNotification(type, event);
+        },
         WebSocketImpl: WebSocket,
         log: console.log,
     });
@@ -517,6 +550,11 @@ bot.onMessage(async (channel, user, message, self) => {
     // compare. Awaited so a Claude failure inside cannot reject unhandled —
     // it swallows its own errors and logs them.
     if (await followThanks.onMessage(channel, user, message)) return;
+
+    // First-message-of-stream welcome. ⛔ Does NOT return — the message must
+    // still reach command handling below. Max wants the command answered too;
+    // the welcome's own 5s delay is what puts it second.
+    chatWelcome.onMessage(channel, user, message);
 
     // Topic commands, checked before the general command parsing below. Matches
     // on the first token only, so an ordinary chat line costs one lookup.
