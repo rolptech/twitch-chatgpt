@@ -113,6 +113,24 @@ export class TwitchBot {
         this.client.on('cheer', callback);
     }
 
+    // Watch Streaks and anything else Twitch adds to USERNOTICE (15 Aug 2026).
+    //
+    // ⭐ tmi.js@1.8.5 has named cases for eleven msg-ids and nothing else, but it
+    // does NOT drop the rest — lib/client.js:783:
+    //
+    //     // All other msgid events should be emitted under a usernotice event
+    //     default:
+    //         this.emit('usernotice', msgid, channel, tags, msg);
+    //
+    // ⇒ So a Watch Streak (msg-id=viewermilestone) is reachable without touching
+    // tmi.js or waiting for EventSub support, which does not exist for it.
+    //
+    // ⛔ Callback shape is (msgid, channel, tags, msg) — the msg-id comes FIRST,
+    // ahead of the channel. Every other handler in this class starts with channel.
+    onUsernotice(callback) {
+        this.client.on('usernotice', callback);
+    }
+
     say(channel, message) {
         // Use async/await syntax to handle promises
         (async () => {
