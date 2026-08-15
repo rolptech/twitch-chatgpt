@@ -17,6 +17,7 @@ import {chunkText, sayChunked} from './chunk_text.js';
 import {createShoutout, profileLines} from './shoutout.js';
 import {createEventSub} from './eventsub.js';
 import {createHypeTrain} from './hype_train.js';
+import {createWatchStreak} from './watch_streak.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -360,6 +361,26 @@ const cheerThanks = createCheerThanks({
 
 bot.onCheer((cheerChannel, tags, message) => {
     cheerThanks.onCheer(cheerChannel, tags, message);
+});
+
+// Watch Streaks (15 Aug 2026). Arrives as an IRC USERNOTICE with
+// msg-id=viewermilestone — NOT available via EventSub, so this is the only path.
+//
+// ⛔ Signature is (msgid, channel, tags, msg): the msg-id comes FIRST, unlike
+// every other handler here. See twitch_bot.js onUsernotice.
+//
+// ⚠ Ungated by _cooldownActive, like the raid welcome — Max publishes these
+// manually, so he is already the filter on how many appear.
+const watchStreak = createWatchStreak({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+});
+
+bot.onUsernotice((msgid, noticeChannel, tags) => {
+    watchStreak.onUsernotice(msgid, noticeChannel, tags);
 });
 
 // !kosmische · !berlinschool · !artists · !tranceroots (14 Aug 2026) — moved off
