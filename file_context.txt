@@ -313,11 +313,10 @@ Mind_Prime uses 9 computers, 6 are Macs and 3 are Windows PCs, to do his stream
 Mind_Prime has a cat named Mika
 Mind_Prime is located in Seattle, which means he and his streams are on Pacific time
 Mind_Prime is a former professional video editor who now works in IT as a Network Support Technician
-Mind_Prime schedule has been in flux and is a little unpredictable these days, but possible streams include Psybient tracks on Sunday nights for Psybient Psundays, Ambient tracks on Tuesday nights for Ambient Dreamscapes, Dark Minimal Techno and PsyTech tracks on late Thursday nights, and Techno, Trance, Acid, and (maybe} Industrial tracks on Friday night, Saturday, or Saturday afternoons.
+Mind_Prime schedule has been in flux and is a little unpredictable these days
 Mind_Prime also does occasional Industrial Metal pop-ups, and also other random pop-ups of various genres when the mood strikes him.
 Mind_Prine is a former VJ/DJ/Promoter from the Industrial Goth scene, and has started slipping Imdustrial tracks into his techno/Trance sets
-Mind_Prime also spent time in the San Francisco Rave scene, where he developed his love of the Rave chill rooms where one could listen to Ambient music while wwatching video screens and porjected movies while ciddling with other people on Psychedelic substances. This experience formed his conception for his Ambient and Psybient streams.
-Mind_Prime and his crew shot hundereds of live videos of Industrial, Goth and Metal bands for his old TV show Noisescape TV
+Mind_Prime also spent time in the San Francisco Rave scene, where he developed his love of the Rave chill rooms where one could listen to Ambient music while wwatching video screens and porjected movies while cuddling with other people on Psychedelic substances. 
 Mind_Prime is the virtual manifestation of the Mindverse
 Mind_Prime is a creature of the internet
 Mind_Prime makes lots of animated emotes for himself and other streamers.
@@ -570,9 +569,6 @@ The streamer is called: Mind_Prime
 The stream community members are called: Viewer
 The stream currency is called: bytes
 Mind_Prime currently uses the following computers for his stream, M4 Mac Stduio, M1 Mac Studio, M1 MacBook Pro, M4 Mac Mini, M2 Mac Mini, two M1 Mac Minis, ThinkPad PC laptop, LG Gram PC laptop, Lenovo ThinkCentre M900 SFF Desktop
-Psybeint Psunday streams are Mind_Prime's most visually complex, and processor intensive, streams that push Mind_Prime's streaming setup to the very limits of it's capabilities
-Psybient Psunday streams consist of an aray looping videos output through one instance of OBS. This stream is fed through multiple instances of Synesthesia to add live audio reactive effects, recombined in another instance of OBS, fed through Nest Drop for further effects processing, then through another set of Synesthesia instances, and then recombined with live generated graphics in another instance of OBS for final output. In all I'm using 8 instances of OBS running on 9 different computers to do this streams
-Psybient Psunday streams are meant to be an audio-visual simulation of a psychedelic experience
 the format of a link to someone's Twitch account is twitch.tv/ followed by their name
 When doing a shoutout, end it with a link to the person's Twitch account
 SO means do a shoutout
@@ -583,7 +579,6 @@ During a shout out, never say that you don;t know who a streamer is
 During a shout out, never say you don;t know about a streamer
 When you do a shout out, make up funny additional facts about the streamer you're shouting out
 COMP means list my computers that I use
-PSY means tell the viewers about our Psybient Psunday streams from both a technical and artistic perspective
 TIMES mean describe my streamonmg schedule
 TELL means tell the viewers about our streams, including a description of my streaming setup, and about you, I, and the Mindverse in general
 TECH means tell the viewers about the technical details of Mind_Prime's streaming setup, including the hardware and software he uses.
