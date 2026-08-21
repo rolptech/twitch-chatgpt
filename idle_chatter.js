@@ -96,7 +96,7 @@ export const DEFAULT_BOT_NAMES = [
 const CATEGORIES = [
     {
         key: "now_playing",
-        weight: 25,
+        weight: 18,
         needsTrack: true,
         prompt: (t) =>
             `[Now playing on stream: ${t}] Chat has gone quiet. Say something about this track or artist ` +
@@ -104,7 +104,7 @@ const CATEGORIES = [
     },
     {
         key: "track_trivia",
-        weight: 20,
+        weight: 14,
         needsTrack: true,
         prompt: (t) =>
             `[Now playing on stream: ${t}] Chat has gone quiet. Offer one piece of trivia connected in some way ` +
@@ -112,11 +112,26 @@ const CATEGORIES = [
     },
     {
         key: "genre_fact",
-        weight: 15,
+        weight: 12,
         needsTrack: true,
         prompt: (t) =>
             `[Now playing on stream: ${t}] Chat has gone quiet. Offer one fact about the music itself — the genre, ` +
             `its history, how the sound is made, something adjacent to what is playing. Unprompted.`,
+    },
+    {
+        // ⛔ THE SET, NOT THE RECORD. Max, 21 Aug 2026: "I want comments about the set as
+        // awhgole". The stream TITLE is the framing he chose for the night — e.g.
+        // "Cyberium (Techno/Acid/Dark Trance) | ..." — which is information Serato does
+        // not have. Without it the bot described a dark-trance night as "dark ambient".
+        // ⚠ needsTitle, not needsTrack: this one is about the whole set, so it is
+        // available whenever a title is known even between tracks.
+        key: "set_vibe",
+        weight: 16,
+        needsTitle: true,
+        prompt: (t, title) =>
+            `[Tonight's stream is titled: "${title}"]${t ? ` [Now playing: ${t}]` : ""} Chat has gone quiet. ` +
+            `Say something about the SET AS A WHOLE — the mood of the night, where the journey has been heading, ` +
+            `the genre territory it is in. Not a comment on a single track. Unprompted.`,
     },
     {
         key: "hype",
@@ -155,6 +170,7 @@ export function createIdleChatter({
     isEnabled = () => true,
     isLive = () => false,
     nowPlaying = () => null,
+    streamTitle = () => null,
     sayChunkedFn,
     maxLength = 399,
     quietWindowSec = DEFAULT_QUIET_WINDOW_SEC,
@@ -217,8 +233,9 @@ export function createIdleChatter({
         _lastSpokeAt = now();
     }
 
-    function _pickCategory(track) {
-        const pool = CATEGORIES.filter((c) => !c.needsTrack || Boolean(track));
+    function _pickCategory(track, title) {
+        const pool = CATEGORIES.filter((c) =>
+            (!c.needsTrack || Boolean(track)) && (!c.needsTitle || Boolean(title)));
         const total = pool.reduce((s, c) => s + c.weight, 0);
         if (total <= 0) return null;
         let r = random() * total;
@@ -279,6 +296,8 @@ export function createIdleChatter({
             `[Chat has been quiet. ${who} just said, without addressing you: "${message}"] ` +
             `Reply to what they actually said, briefly, like someone in the room picking up the thread.`;
         if (track) text = `[Now playing on stream: ${track}] ` + text;
+        const _title = streamTitle();
+        if (_title) text = `[Tonight's stream: "${_title}"] ` + text;
 
         return _speak(channel, text, live ? "reply/live" : "reply/offline");
     }
@@ -290,10 +309,11 @@ export function createIdleChatter({
         if (!isQuiet()) return false;
 
         const track = nowPlaying();
-        const cat = _pickCategory(track);
+        const title = streamTitle();
+        const cat = _pickCategory(track, title);
         if (!cat) return false;
 
-        return _speak(channel, cat.prompt(track), `self/${cat.key}`);
+        return _speak(channel, cat.prompt(track, title), `self/${cat.key}`);
     }
 
     function start(channel) {

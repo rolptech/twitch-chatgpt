@@ -8,7 +8,7 @@ import {job} from './keep_alive.js';
 import {ClaudeOperations} from './claude_operations.js';
 import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
-import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText, fetchIsLive} from './twitch_profile.js';
+import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText, fetchStreamState} from './twitch_profile.js';
 import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
 import {createCheerThanks} from './cheer_thanks.js';
@@ -276,11 +276,7 @@ bot.onConnected((addr, port) => {
     // ⛔ null means "could not determine" and is NOT offline — leave the flag alone in
     // that case and let EventSub correct it at the next transition.
     if (_hypeChannelName) {
-        fetchIsLive(String(_hypeChannelName).replace(/^[#@]/, "")).then((live) => {
-            if (live === null) { console.log("[idle_chatter] boot live-check: undetermined, leaving _isLive=" + _isLive); return; }
-            _isLive = live;
-            console.log("[idle_chatter] boot live-check: " + (live ? "LIVE" : "offline"));
-        });
+        fetchStreamState(String(_hypeChannelName).replace(/^[#@]/, "")).then((st) => _applyStreamState(st, "boot"));
     }
 
     // join channels
@@ -487,12 +483,34 @@ const chatWelcome = createChatWelcome({
 // and the bot behaves as permanently offline — which is silent-ish, not noisy.
 let _isLive = false;
 
+// The stream's TITLE, which is Max's framing for the whole night ("Cyberium
+// (Techno/Acid/Dark Trance) | ..."). ⛔ Different information from the track Serato
+// reports: the SET versus the RECORD. idle_chatter uses it to comment on the set as a
+// whole (Max, 21 Aug 2026: "I want comments about the set as awhgole").
+//
+// ⛔ Kept fresh from THREE places because no single one is sufficient:
+//   boot            — a process starting mid-stream missed stream.online entirely
+//   stream.online   — the normal case, title set before going live
+//   channel.update  — the ONLY one that catches a retitle mid-stream
+let _streamTitle = null;
+let _streamGame = null;
+
+function _applyStreamState(st, why) {
+    if (!st) { console.log(`[idle_chatter] stream-state (${why}): undetermined, leaving as-is`); return; }
+    _isLive = st.live;
+    if (st.title) _streamTitle = st.title;
+    if (st.game) _streamGame = st.game;
+    console.log(`[idle_chatter] stream-state (${why}): ${st.live ? "LIVE" : "offline"}` +
+                (st.title ? ` — "${st.title}"` : ""));
+}
+
 const idleChatter = createIdleChatter({
     say: (sayChannel, message) => bot.say(sayChannel, message),
     claudeCall: (text) => claude_ops.make_claude_call(text),
     isEnabled: () => _botEnabled,
     isLive: () => _isLive,
     nowPlaying: () => (serato ? serato.nowPlaying() : null),
+    streamTitle: () => _streamTitle,
     sayChunkedFn: sayChunked,
     maxLength: MAX_LENGTH,
     quietWindowSec: Number(process.env.IDLE_QUIET_WINDOW_SEC ?? 120),
@@ -606,9 +624,28 @@ if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _h
             // after the first stream and never clear, so the 1-hour offline cooldown would
             // never apply and the bot would keep the 2-minute live cadence forever.
             {type: "stream.offline", version: "1"},
+            // ⛔ channel.update needs NO scope, and it is the ONLY signal that catches a
+            // RETITLE MID-STREAM. boot and stream.online both read the title once; if Max
+            // changes it an hour in, only this tells the bot.
+            {type: "channel.update", version: "2"},
         ],
         onNotification: (type, event) => {
-            if (type === "stream.online") { _isLive = true; chatWelcome.reset("stream.online"); return; }
+            if (type === "stream.online") {
+                _isLive = true;
+                chatWelcome.reset("stream.online");
+                // Refetch rather than trusting a stale title from boot — he usually sets it
+                // just before going live, so the boot value can predate the change.
+                fetchStreamState(String(_hypeChannel).replace(/^[#@]/, "")).then((st) => _applyStreamState(st, "stream.online"));
+                return;
+            }
+            if (type === "channel.update") {
+                // ⚠ The event carries the new values directly — no refetch needed, and using
+                // them avoids a race where a refetch reads back the PREVIOUS title.
+                if (event && event.title) _streamTitle = event.title;
+                if (event && event.category_name) _streamGame = event.category_name;
+                console.log(`[idle_chatter] channel.update — "${_streamTitle}"`);
+                return;
+            }
             if (type === "stream.offline") { _isLive = false; console.log("[idle_chatter] stream.offline — offline cadence"); return; }
             hypeTrain.onNotification(type, event);
         },

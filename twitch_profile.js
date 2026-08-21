@@ -299,11 +299,20 @@ export function relativeTimePhrase(startedAt) {
 // distinguish "offline" from "unknown" and NOT treat null as offline.
 const LIVE_QUERY = `query($login: String!) {
   user(login: $login) {
-    stream { id }
+    stream { id title game { displayName } }
   }
 }`;
 
-export async function fetchIsLive(login) {
+// Returns { live, title, game } — or null when it could not be determined.
+// ⛔ null is NOT offline. A caller that collapses the two reintroduces the mid-stream
+// deploy bug on any network blip.
+//
+// ⚠ `title` is the STREAM's title while live. Max sets it per night and it carries the
+// framing for the whole set ("Cyberium (Techno/Acid/Dark Trance) | ..."), which is
+// different information from the track Serato reports — the set versus the record.
+// It goes stale if he retitles mid-stream, which is why index.js also subscribes to
+// EventSub channel.update rather than relying on this one call.
+export async function fetchStreamState(login) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     try {
@@ -319,7 +328,12 @@ export async function fetchIsLive(login) {
         // ⛔ An unknown login gives user === null, which is NOT "offline" — it is
         // "no answer". Only a real user object lets us say anything.
         if (!user) return null;
-        return Boolean(user.stream);
+        const st = user.stream;
+        return {
+            live: Boolean(st),
+            title: (st && st.title) || null,
+            game: (st && st.game && st.game.displayName) || null,
+        };
     } catch (error) {
         return null;
     } finally {

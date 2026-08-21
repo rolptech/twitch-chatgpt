@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fetchIsLive } from '../twitch_profile.js';
+import { fetchStreamState } from '../twitch_profile.js';
 
 function withFetch(impl, fn) {
     const real = globalThis.fetch;
@@ -23,14 +23,14 @@ function withFetch(impl, fn) {
 const ok = (body) => async () => ({ ok: true, json: async () => body });
 
 test('a live channel resolves true', async () => {
-    await withFetch(ok({ data: { user: { stream: { id: '123' } } } }), async () => {
-        assert.equal(await fetchIsLive('someone'), true);
+    await withFetch(ok({ data: { user: { stream: { id: '123', title: 'Cyberium (Techno/Acid)', game: { displayName: 'DJs' } } } } }), async () => {
+        assert.equal((await fetchStreamState('someone')).live, true);
     });
 });
 
 test('an offline channel resolves false — stream is null, user is not', async () => {
     await withFetch(ok({ data: { user: { stream: null } } }), async () => {
-        assert.equal(await fetchIsLive('someone'), false);
+        assert.equal((await fetchStreamState('someone')).live, false);
     });
 });
 
@@ -39,24 +39,40 @@ test('an unknown login resolves NULL, not false', async () => {
     // that as "offline" would be a confident wrong answer about a real channel whose
     // name was merely mistyped in config.
     await withFetch(ok({ data: { user: null } }), async () => {
-        assert.equal(await fetchIsLive('nope'), null);
+        assert.equal(await fetchStreamState('nope'), null);
     });
 });
 
 test('a non-2xx resolves null', async () => {
     await withFetch(async () => ({ ok: false, json: async () => ({}) }), async () => {
-        assert.equal(await fetchIsLive('someone'), null);
+        assert.equal(await fetchStreamState('someone'), null);
     });
 });
 
 test('a thrown network error resolves null and never rejects', async () => {
     await withFetch(async () => { throw new Error('offline machine'); }, async () => {
-        assert.equal(await fetchIsLive('someone'), null);
+        assert.equal(await fetchStreamState('someone'), null);
     });
 });
 
 test('malformed json resolves null rather than throwing', async () => {
     await withFetch(async () => ({ ok: true, json: async () => { throw new Error('bad json'); } }), async () => {
-        assert.equal(await fetchIsLive('someone'), null);
+        assert.equal(await fetchStreamState('someone'), null);
+    });
+});
+
+test('a live channel carries the title and category through', async () => {
+    await withFetch(ok({ data: { user: { stream: { id: '1', title: 'Cyberium (Techno/Acid)', game: { displayName: 'DJs' } } } } }), async () => {
+        const st = await fetchStreamState('someone');
+        assert.equal(st.title, 'Cyberium (Techno/Acid)');
+        assert.equal(st.game, 'DJs');
+    });
+});
+
+test('an offline channel reports no title rather than a stale one', async () => {
+    await withFetch(ok({ data: { user: { stream: null } } }), async () => {
+        const st = await fetchStreamState('someone');
+        assert.equal(st.live, false);
+        assert.equal(st.title, null);
     });
 });
