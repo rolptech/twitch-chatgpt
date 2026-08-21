@@ -306,3 +306,62 @@ test('without a title the music prompts still read cleanly', () => {
     assert.ok(!/Tonight's stream is titled/.test(p), 'no empty title block');
     assert.match(p, /Stay close to what is actually playing/);
 });
+
+// ---------------------------------------------------------------------------
+// Backoff: unprompted comments into an empty room double the wait — 2, 4, 8, 16 —
+// capped at 16 min, live only, and reset by ANY human message (Max, 21 Aug 2026).
+
+test('the live cooldown doubles 2 -> 4 -> 8 -> 16 and stops at 16', async () => {
+    const h = makeHarness({ isLive: () => true });
+    const expected = [120, 240, 480, 960, 960, 960];
+    for (const want of expected) {
+        h.advance(100000);                       // clear whatever the current wait is
+        assert.equal(await h.instance._tick('#c'), true);
+        assert.equal(h.instance.cooldownSec, want, `expected a ${want}s wait`);
+    }
+});
+
+test('the backoff actually gates — it is not just a reported number', async () => {
+    const h = makeHarness({ isLive: () => true });
+    h.advance(100000); await h.instance._tick('#c');   // streak 1 -> next wait 120s
+    h.advance(100000); await h.instance._tick('#c');   // streak 2 -> next wait 240s
+    assert.equal(h.instance.cooldownSec, 240);
+    h.advance(200);
+    assert.equal(await h.instance._tick('#c'), false, 'still gated at 200s of a 240s wait');
+    h.advance(50);
+    assert.equal(await h.instance._tick('#c'), true, 'fires once 240s has passed');
+});
+
+test('ANY human message resets the backoff to the base', async () => {
+    const h = makeHarness({ isLive: () => true });
+    for (let i = 0; i < 3; i++) { h.advance(100000); await h.instance._tick('#c'); }
+    assert.equal(h.instance.selfStreak, 3);
+    assert.equal(h.instance.cooldownSec, 480, '3 comments in -> 8 minutes');
+
+    h.instance.noteMessage({ username: 'a_human' });
+    assert.equal(h.instance.selfStreak, 0);
+    assert.equal(h.instance.cooldownSec, 120, 'back to 2 minutes');
+});
+
+test('a BOT message does not reset the backoff', async () => {
+    const h = makeHarness({ isLive: () => true });
+    h.advance(100000); await h.instance._tick('#c');
+    assert.equal(h.instance.selfStreak, 1);
+    h.instance.noteMessage({ username: 'StreamElements' });
+    assert.equal(h.instance.selfStreak, 1, 'automation is not company');
+});
+
+test('replying to a human does not itself escalate the streak', async () => {
+    const h = makeHarness({ isLive: () => true });
+    h.advance(100000);
+    h.instance.noteMessage({ username: 'a_human' });          // resets to 0
+    assert.equal(await h.instance.maybeReplyTo('#c', { username: 'a_human' }, 'hi'), true);
+    assert.equal(h.instance.selfStreak, 0, 'a reply is not an unprompted comment');
+});
+
+test('offline stays flat at an hour — no backoff on top', async () => {
+    const h = makeHarness({ isLive: () => false });
+    for (let i = 0; i < 4; i++) { h.advance(100000); await h.instance._tick('#c'); }
+    assert.equal(h.instance.selfStreak, 4, 'the counter still moves');
+    assert.equal(h.instance.cooldownSec, 3600, 'but offline ignores it');
+});
