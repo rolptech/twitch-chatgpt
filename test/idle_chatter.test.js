@@ -194,3 +194,28 @@ test('missing dependencies throw at construction', () => {
     assert.throws(() => createIdleChatter({}), /requires a `say` function/);
     assert.throws(() => createIdleChatter({ say: () => {} }), /requires a `claudeCall` function/);
 });
+
+// ---------------------------------------------------------------------------
+// Regressions from the 21 Aug 2026 live run — all three were observed or proved,
+// not hypothesised.
+
+test('never replies to another bot, even when the room is quiet', async () => {
+    const h = makeHarness({ isLive: () => false });   // offline == replies otherwise ungated
+    for (const b of ['StreamElements', 'Sery_Bot', 'mind_b0t']) {
+        assert.equal(
+            await h.instance.maybeReplyTo('#c', { username: b }, 'automated post'), false,
+            `${b} must not get a reply`);
+    }
+    assert.equal(h.sayCalls.length, 0);
+    // ...but a human in the same conditions does.
+    assert.equal(await h.instance.maybeReplyTo('#c', { username: 'a_human' }, 'hi'), true);
+});
+
+test('not counting a bot and not replying to it are separate gates', async () => {
+    // The activity count already dropped bots; this asserts the reply path does too,
+    // because the first version had one without the other.
+    const h = makeHarness({ isLive: () => false });
+    h.instance.noteMessage({ username: 'Sery_Bot' });
+    assert.equal(h.instance.messageCount, 0, 'not counted');
+    assert.equal(await h.instance.maybeReplyTo('#c', { username: 'Sery_Bot' }, 'x'), false, 'not answered');
+});
