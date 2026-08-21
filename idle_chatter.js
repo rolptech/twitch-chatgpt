@@ -69,6 +69,13 @@
 const DEFAULT_QUIET_WINDOW_SEC = 120;
 const DEFAULT_QUIET_MAX = 4;          // FEWER than this in the window == quiet
 const DEFAULT_COOLDOWN_LIVE_SEC = 120;
+// ⛔ LIVE ONLY. The live cooldown DOUBLES for each unprompted comment made into a room
+// where nobody has spoken — 2, 4, 8, 16 minutes — and stops at this ceiling so the bot
+// never goes fully silent while Max is streaming (his call, 21 Aug 2026).
+// ⚠ Offline is deliberately EXEMPT and stays flat at an hour: an hour is already a long
+// wait, and backing off on top of it would mean multi-hour gaps in a room where the
+// whole point is that someone might wander in.
+const DEFAULT_BACKOFF_MAX_SEC = 960;
 const DEFAULT_COOLDOWN_OFFLINE_SEC = 3600;
 const DEFAULT_TICK_SEC = 15;
 
@@ -198,6 +205,7 @@ export function createIdleChatter({
     quietMax = DEFAULT_QUIET_MAX,
     cooldownLiveSec = DEFAULT_COOLDOWN_LIVE_SEC,
     cooldownOfflineSec = DEFAULT_COOLDOWN_OFFLINE_SEC,
+    backoffMaxSec = DEFAULT_BACKOFF_MAX_SEC,
     botNames = DEFAULT_BOT_NAMES,
     tickSec = DEFAULT_TICK_SEC,
     log = console.log,
@@ -214,6 +222,10 @@ export function createIdleChatter({
     let _lastSpokeAt = -Infinity; // ms epoch of ANY Mind_B0t message
     let _timer = null;
     let _inFlight = false;        // one Claude call at a time; a slow call must not stack
+    // Consecutive unprompted comments made with NO human message in between.
+    // ⛔ Reset by ANY human message (Max, 21 Aug 2026), which includes one the bot then
+    // replies to — a person speaking is a person in the room, however the bot found out.
+    let _selfStreak = 0;
 
     function _isBot(username) {
         return _bots.has(String(username || "").toLowerCase().replace(/^[@#]/, ""));
@@ -232,6 +244,8 @@ export function createIdleChatter({
         const t = now();
         _prune(t);
         _stamps.push(t);
+        // ⛔ A human spoke -> the room is not empty -> the backoff goes back to the base.
+        _selfStreak = 0;
         return true;
     }
 
@@ -241,7 +255,13 @@ export function createIdleChatter({
     }
 
     function _cooldownSec() {
-        return isLive() ? cooldownLiveSec : cooldownOfflineSec;
+        if (!isLive()) return cooldownOfflineSec;          // flat, no backoff — see above
+        // ⛔ EXPONENT IS streak-1, NOT streak. The streak counts comments ALREADY MADE,
+        // so after the first one the next wait is the BASE (2 min), not double it.
+        // Using 2^streak started the ladder a rung high — 4, 8, 16 — and skipped the
+        // 2-minute gap Max actually asked for. Caught by the ladder test, not by reading.
+        const rung = Math.max(0, _selfStreak - 1);
+        return Math.min(cooldownLiveSec * Math.pow(2, rung), backoffMaxSec);
     }
 
     function cooldownActive() {
@@ -275,6 +295,12 @@ export function createIdleChatter({
             if (!response) return false;
             if (sayChunkedFn) sayChunkedFn(say, channel, response, maxLength);
             else say(channel, response);
+            // ⛔ Mark our OWN send here rather than relying solely on index.js's say()
+            // wrapper. The wrapper is what catches messages from every OTHER module, and
+            // it still does — but without this line the module cannot enforce its own
+            // cooldown standalone, which is a rule depending on a caller to hold it.
+            // (Double-marking is harmless: markSpoke just stamps the clock.)
+            markSpoke();
             log(`[idle_chatter] spoke (${why})`);
             return true;
         } catch (err) {
@@ -334,7 +360,11 @@ export function createIdleChatter({
         const cat = _pickCategory(track, title);
         if (!cat) return false;
 
-        return _speak(channel, cat.prompt(track, title), `self/${cat.key}`);
+        const spoke = await _speak(channel, cat.prompt(track, title), `self/${cat.key}`);
+        // ⛔ Only the UNPROMPTED path escalates. maybeReplyTo does not, because reaching
+        // it means a human just spoke — which has already reset the streak to 0.
+        if (spoke) _selfStreak += 1;
+        return spoke;
     }
 
     function start(channel) {
@@ -353,6 +383,8 @@ export function createIdleChatter({
     return {
         noteMessage, maybeReplyTo, markSpoke, start, stop,
         isQuiet, cooldownActive,
+        get selfStreak() { return _selfStreak; },
+        get cooldownSec() { return _cooldownSec(); },
         _tick, _pickCategory,
         get messageCount() { _prune(now()); return _stamps.length; },
         get bots() { return _bots; },
