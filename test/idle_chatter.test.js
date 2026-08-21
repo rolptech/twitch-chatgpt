@@ -152,16 +152,19 @@ test('offline drops the three music categories', () => {
     assert.ok(withoutTrack.has('robot_joke') && withoutTrack.has('planet_weather'));
 });
 
-test('music categories take about 60% when a track is playing', () => {
+test('with a track but NO title, the music share drops to ~52% — set_vibe is out', () => {
+    // ⚠ Weights are absolute, so excluding a category renormalises the rest. Losing
+    // set_vibe (16) leaves the other three music ones at 44 of 84 = ~52%, not 60%.
+    // Deliberate and small; recorded here so the drift is not mistaken for a bug.
     const music = new Set(['now_playing', 'track_trivia', 'genre_fact']);
     let hits = 0;
     const N = 1000;
     for (let i = 0; i < N; i++) {
         const inst = makeHarness({ random: () => i / N }).instance;
-        if (music.has(inst._pickCategory('Artist - Track').key)) hits++;
+        if (music.has(inst._pickCategory('Artist - Track', null).key)) hits++;
     }
     const pct = (hits / N) * 100;
-    assert.ok(pct > 55 && pct < 65, `music share was ${pct}%, expected ~60%`);
+    assert.ok(pct > 48 && pct < 57, `music share was ${pct}%, expected ~52%`);
 });
 
 test('a Claude failure is swallowed — ambient chatter never surfaces an error', async () => {
@@ -218,4 +221,49 @@ test('not counting a bot and not replying to it are separate gates', async () =>
     h.instance.noteMessage({ username: 'Sery_Bot' });
     assert.equal(h.instance.messageCount, 0, 'not counted');
     assert.equal(await h.instance.maybeReplyTo('#c', { username: 'Sery_Bot' }, 'x'), false, 'not answered');
+});
+
+test('set_vibe needs a TITLE, not a track — it is about the whole night', () => {
+    const seen = (t, ti) => {
+        const s = new Set();
+        for (let i = 0; i < 300; i++) s.add(makeHarness({ random: () => i / 300 }).instance._pickCategory(t, ti).key);
+        return s;
+    };
+    assert.ok(seen('A - B', 'Cyberium').has('set_vibe'));
+    assert.ok(seen(null, 'Cyberium').has('set_vibe'), 'available between tracks');
+    assert.ok(!seen('A - B', null).has('set_vibe'), 'not available without a title');
+});
+
+test('the set prompt is about the set, and carries the title', () => {
+    // ⛔ Ask for set_vibe specifically. The first version of this test took whatever
+    // _pickCategory returned and asserted the title was in it — but only set_vibe
+    // carries the title, so it failed on any other draw. The test was wrong.
+    const h = makeHarness({ random: () => 0 });
+    let cat = null;
+    for (let i = 0; i < 500 && !cat; i++) {
+        const c = makeHarness({ random: () => i / 500 }).instance._pickCategory('A - B', 'Cyberium (Techno/Acid)');
+        if (c.key === 'set_vibe') cat = c;
+    }
+    assert.ok(cat, 'set_vibe must be reachable');
+    const p = cat.prompt('A - B', 'Cyberium (Techno/Acid)');
+    assert.match(p, /Cyberium/, 'the title is in the prompt');
+    assert.match(p, /SET AS A WHOLE/, 'and it asks for the set, not the track');
+});
+
+test('a reply carries the set framing as well as the track', async () => {
+    const h = makeHarness({ isLive: () => false, nowPlaying: () => 'A - B', streamTitle: () => 'Cyberium (Techno/Acid)' });
+    await h.instance.maybeReplyTo('#c', { username: 'v' }, 'nice one');
+    assert.match(h.claudeCalls[0], /Cyberium/, 'the set title is in the reply context');
+    assert.match(h.claudeCalls[0], /A - B/, 'and so is the track');
+});
+
+test('music share stays ~60% now that four categories share it', () => {
+    const music = new Set(['now_playing', 'track_trivia', 'genre_fact', 'set_vibe']);
+    let hits = 0; const N = 1000;
+    for (let i = 0; i < N; i++) {
+        const inst = makeHarness({ random: () => i / N }).instance;
+        if (music.has(inst._pickCategory('A - B', 'Cyberium').key)) hits++;
+    }
+    const pct = (hits / N) * 100;
+    assert.ok(pct > 55 && pct < 65, `music share was ${pct}%, expected ~60%`);
 });
