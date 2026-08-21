@@ -257,6 +257,18 @@ export function createIdleChatter({
     // rather than a second gate.
     async function maybeReplyTo(channel, user, message) {
         if (!isEnabled()) return false;
+
+        // ⛔ NEVER REPLY TO ANOTHER BOT. Max asked for a reply to "a new comment made by
+        // another chatter" — StreamElements' follow announcements and Sery_Bot's
+        // wellness reminders are not that, and answering them would have the bot
+        // holding conversations with automation in an empty room.
+        //
+        // ⚠ The same list already excludes bots from the ACTIVITY COUNT, but that is a
+        // different question and the two were wired separately at first: not counting a
+        // message is not the same as not answering it. Both are needed.
+        const _who = (user && user.username) || user;
+        if (_isBot(_who)) return false;
+
         if (!isQuiet()) return false;
         const live = isLive();
         if (live && cooldownActive()) return false;

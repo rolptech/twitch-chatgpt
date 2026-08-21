@@ -8,7 +8,7 @@ import {job} from './keep_alive.js';
 import {ClaudeOperations} from './claude_operations.js';
 import {SeratoOperations} from './serato_operations.js';
 import {TwitchBot} from './twitch_bot.js';
-import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText} from './twitch_profile.js';
+import {fetchRaiderProfile, cleanTitle, cleanDescription, relativeTimePhrase, extractPanelText, fetchIsLive} from './twitch_profile.js';
 import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
 import {createCheerThanks} from './cheer_thanks.js';
@@ -193,6 +193,13 @@ function _markFired(username) {
 // "!mbstop" nor "!mbstart" matches TRIGGER_REGEX above).
 let _botEnabled = String(process.env.BOT_ENABLED || "true").toLowerCase() !== "false";
 
+// True when a message came from THIS bot's own Twitch account, whichever process
+// posted it. Compared by login, so it holds across duplicate instances.
+function _isOwnAccount(username) {
+    if (!username) return false;
+    return String(username).toLowerCase() === String(TWITCH_USER || "").toLowerCase().replace(/^[@#]/, "");
+}
+
 function _isModOrBroadcaster(user) {
     if (user && user.mod) return true;
     if (user && user.badges && user.badges.broadcaster === "1") return true;
@@ -256,6 +263,25 @@ bot.onConnected((addr, port) => {
     // nothing can be said before the bot is connected, and onConnected can fire again
     // on a reconnect — start() is idempotent, so a reconnect does not stack timers.
     if (_hypeChannelName) idleChatter.start(_hypeChannelName);
+
+    // ⛔⛔ SETTLE _isLive BY ASKING, NOT BY WAITING. stream.online/offline are
+    // TRANSITIONS: a process that starts mid-stream has already missed stream.online
+    // and never sees it, so it treats a live channel as offline for the whole
+    // broadcast — the 1-hour cadence instead of the 2-minute one.
+    //
+    // ⚠ Observed live 21 Aug 2026, on the very deploy that shipped idle_chatter: the
+    // merge landed while Max was streaming and the bot went quiet for the rest of it.
+    // This is not a rare restart — it is EVERY deploy made during a stream.
+    //
+    // ⛔ null means "could not determine" and is NOT offline — leave the flag alone in
+    // that case and let EventSub correct it at the next transition.
+    if (_hypeChannelName) {
+        fetchIsLive(String(_hypeChannelName).replace(/^[#@]/, "")).then((live) => {
+            if (live === null) { console.log("[idle_chatter] boot live-check: undetermined, leaving _isLive=" + _isLive); return; }
+            _isLive = live;
+            console.log("[idle_chatter] boot live-check: " + (live ? "LIVE" : "offline"));
+        });
+    }
 
     // join channels
     channels.forEach(channel => {
@@ -597,6 +623,24 @@ if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _h
 
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
+
+    // ⛔⛔ `self` IS NOT A SENDER CHECK. [verified in node_modules/tmi.js/lib/client.js,
+    // 21 Aug 2026] it is HARDCODED: false for every message arriving from the server
+    // (line 1117) and true only for tmi.js's local echo of a message THIS process sent
+    // (line 1405). It cannot tell you who sent an inbound message.
+    //
+    // ⇒ So a SECOND instance of this bot — which is what a Render deploy produces for
+    // a moment, and what a stuck old instance produces indefinitely — sees the first
+    // instance's messages as a stranger's.
+    //
+    // ⛔ AND MIND_B0T'S OWN EMOTE IS `mindbo7MindBot`, WHICH CONTAINS THE TRIGGER TOKEN
+    // `mindbot`. Every message it posts therefore carries its own trigger. Two
+    // instances plus that emote is an unbounded feedback loop, and it was observed
+    // live on 21 Aug: the bot answered its own Europa weather report twice.
+    // ⚠ The per-user cooldown used to bound this to one exchange per 10s. It was
+    // removed the same day on Max's ruling that direct replies are never gated, which
+    // is what turned a quirk into a loop. This guard is now the only thing stopping it.
+    if (_isOwnAccount(user && user.username)) return;
 
     // Activity for the quiet measure. ⛔ FIRST and UNCONDITIONAL — it must count even
     // when !mbstop has muted the bot, and even when the message is a command, because

@@ -276,3 +276,53 @@ export function relativeTimePhrase(startedAt) {
     if (hoursAgo < 24 * 14) return "recently";
     return "a while back";
 }
+
+// ---------------------------------------------------------------------------
+// IS THIS CHANNEL LIVE RIGHT NOW? (added 21 Aug 2026)
+//
+// ⛔ WHY THIS EXISTS, and it is not belt-and-braces. `_isLive` in index.js is driven
+// by EventSub stream.online / stream.offline, which are TRANSITIONS. A process that
+// starts DURING a stream has already missed stream.online and will never see it, so
+// it treats a live channel as offline for the rest of the broadcast.
+//
+// ⚠ This was dismissed as a rare restart case and then happened immediately: the
+// 21 Aug deploy landed mid-stream, and idle_chatter sat on its 1-hour offline cadence
+// while Max was live. It is not an edge case — it is EVERY deploy made during a
+// stream, which is the normal way this repo ships.
+//
+// ⇒ Ask Twitch once at boot instead of waiting for a transition. Anonymous GQL, the
+// same public web Client-ID used above (Max's ruling, 11 Aug 2026: "no app to
+// register, nothing new to add to Render"), so this needs no credentials and no
+// scope.
+//
+// Resolves true / false, or null when it could not be determined — the caller must
+// distinguish "offline" from "unknown" and NOT treat null as offline.
+const LIVE_QUERY = `query($login: String!) {
+  user(login: $login) {
+    stream { id }
+  }
+}`;
+
+export async function fetchIsLive(login) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+        const r = await fetch(GQL_ENDPOINT, {
+            method: "POST",
+            headers: { "Client-ID": CLIENT_ID, "Content-Type": "application/json" },
+            body: JSON.stringify({ query: LIVE_QUERY, variables: { login } }),
+            signal: controller.signal,
+        });
+        if (!r.ok) return null;
+        const body = await r.json();
+        const user = body?.data?.user;
+        // ⛔ An unknown login gives user === null, which is NOT "offline" — it is
+        // "no answer". Only a real user object lets us say anything.
+        if (!user) return null;
+        return Boolean(user.stream);
+    } catch (error) {
+        return null;
+    } finally {
+        clearTimeout(timer);
+    }
+}
