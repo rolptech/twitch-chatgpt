@@ -267,3 +267,42 @@ test('music share stays ~60% now that four categories share it', () => {
     const pct = (hits / N) * 100;
     assert.ok(pct > 55 && pct < 65, `music share was ${pct}%, expected ~60%`);
 });
+
+test('⛔ every music category carries the night\'s title, not just set_vibe', () => {
+    // The 21 Aug Berlin School error: genre_fact saw only the track name, inferred
+    // "trance", and credited Tangerine Dream over a Techno/Acid/Dark Trance set.
+    // Only set_vibe had the title, which is the gap this asserts is closed.
+    const TITLE = 'Cyberium (Techno/Acid/Dark Trance)';
+    const music = ['now_playing', 'track_trivia', 'genre_fact', 'set_vibe'];
+    const found = {};
+    for (let i = 0; i < 600; i++) {
+        const c = makeHarness({ random: () => i / 600 }).instance._pickCategory('A - B', TITLE);
+        found[c.key] = c.prompt('A - B', TITLE);
+    }
+    for (const k of music) {
+        assert.ok(found[k], `${k} must be reachable`);
+        assert.match(found[k], /Techno\/Acid\/Dark Trance/, `${k} must carry the title`);
+    }
+});
+
+test('genre_fact is told explicitly not to drift to another lineage', () => {
+    const TITLE = 'Cyberium (Techno/Acid/Dark Trance)';
+    let p = null;
+    for (let i = 0; i < 600 && !p; i++) {
+        const c = makeHarness({ random: () => i / 600 }).instance._pickCategory('A - B', TITLE);
+        if (c.key === 'genre_fact') p = c.prompt('A - B', TITLE);
+    }
+    assert.ok(p);
+    assert.match(p, /Do NOT reach for a different/, 'the anti-drift instruction is present');
+});
+
+test('without a title the music prompts still read cleanly', () => {
+    let p = null;
+    for (let i = 0; i < 600 && !p; i++) {
+        const c = makeHarness({ random: () => i / 600 }).instance._pickCategory('A - B', null);
+        if (c.key === 'genre_fact') p = c.prompt('A - B', null);
+    }
+    assert.ok(p);
+    assert.ok(!/Tonight's stream is titled/.test(p), 'no empty title block');
+    assert.match(p, /Stay close to what is actually playing/);
+});

@@ -93,12 +93,19 @@ export const DEFAULT_BOT_NAMES = [
 //
 // ⛔ `needsTrack` is what makes a category unavailable offline, and also protects the
 // live case where Serato reports nothing. Do not assume live == a track is playing.
+// Tonight's framing, prepended to every prompt that could otherwise guess wrong about
+// the genre. Empty when no title is known, so the prompts read normally without it.
+function _setting(title) {
+    return title ? `[Tonight's stream is titled: "${title}"] ` : "";
+}
+
 const CATEGORIES = [
     {
         key: "now_playing",
         weight: 18,
         needsTrack: true,
-        prompt: (t) =>
+        prompt: (t, title) =>
+            _setting(title) +
             `[Now playing on stream: ${t}] Chat has gone quiet. Say something about this track or artist ` +
             `to the chat, unprompted — your own take, not a track listing. Nobody asked; you are just filling the silence.`,
     },
@@ -106,17 +113,31 @@ const CATEGORIES = [
         key: "track_trivia",
         weight: 14,
         needsTrack: true,
-        prompt: (t) =>
+        prompt: (t, title) =>
+            _setting(title) +
             `[Now playing on stream: ${t}] Chat has gone quiet. Offer one piece of trivia connected in some way ` +
             `to this track or its artist. Unprompted — nobody asked.`,
     },
     {
+        // ⛔⛔ THE TITLE IS LOAD-BEARING HERE, NOT DECORATION. This category asks for a
+        // fact about THE GENRE, and without the night's stated genre it can only infer
+        // one from the track name — which produced a real error live on 21 Aug 2026:
+        // over a Techno/Acid/DARK TRANCE set it reached for the word "trance" and
+        // credited the Berlin School and Tangerine Dream, a 1970s sequencer lineage
+        // with nothing to do with the music playing.
+        // ⇒ Max's title names the genre outright. Anchor on it and say so explicitly,
+        // because the failure was a plausible-sounding wrong lineage, not a nonsense one.
         key: "genre_fact",
         weight: 12,
         needsTrack: true,
-        prompt: (t) =>
+        prompt: (t, title) =>
+            _setting(title) +
             `[Now playing on stream: ${t}] Chat has gone quiet. Offer one fact about the music itself — the genre, ` +
-            `its history, how the sound is made, something adjacent to what is playing. Unprompted.`,
+            `its history, how the sound is made, something adjacent to what is playing. ` +
+            (title
+                ? `⛔ The genre is the one named in tonight's title above. Do NOT reach for a different ` +
+                  `genre or lineage because the track name suggests one — stay in the territory Max is actually playing.`
+                : `Stay close to what is actually playing rather than a broader guess at the genre.`),
     },
     {
         // ⛔ THE SET, NOT THE RECORD. Max, 21 Aug 2026: "I want comments about the set as
