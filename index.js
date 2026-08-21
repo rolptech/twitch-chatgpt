@@ -19,6 +19,7 @@ import {createEventSub} from './eventsub.js';
 import {createHypeTrain} from './hype_train.js';
 import {createWatchStreak} from './watch_streak.js';
 import {createChatWelcome} from './chat_welcome.js';
+import {createIdleChatter} from './idle_chatter.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -251,6 +252,11 @@ else { console.log("SERATO_PLAYLIST_ID not set — now-playing disabled."); }
 bot.onConnected((addr, port) => {
     console.log(`* Connected to ${addr}:${port}`);
 
+    // Start the unprompted-comment tick. ⛔ Here rather than at module construction:
+    // nothing can be said before the bot is connected, and onConnected can fire again
+    // on a reconnect — start() is idempotent, so a reconnect does not stack timers.
+    if (_hypeChannelName) idleChatter.start(_hypeChannelName);
+
     // join channels
     channels.forEach(channel => {
         console.log(`* Joining ${channel}`);
@@ -439,6 +445,48 @@ const chatWelcome = createChatWelcome({
     maxLength: MAX_LENGTH,
 });
 
+// ---------------------------------------------------------------------------
+// LIVE / OFFLINE STATE (Max, 21 Aug 2026) — idle_chatter uses a different cooldown
+// either side of this: 2 minutes live, 1 hour offline.
+//
+// ⛔ Set ONLY by EventSub stream.online / stream.offline below. He considered "5
+// minutes after I raid out" as the offline signal and rejected it once shown that
+// stream.offline is the actual fact, needs no scope, and does not fail on a stream
+// that ends some other way.
+//
+// ⚠ Defaults FALSE — an unattended restart assumes offline until Twitch says
+// otherwise, which errs toward the 1-hour cooldown rather than the 2-minute one.
+// Cosmetic and accepted, same call as chat_welcome's seen-list (Max: "stop worrying
+// about the restart case"). ⛔ If EventSub is not configured this NEVER becomes true,
+// and the bot behaves as permanently offline — which is silent-ish, not noisy.
+let _isLive = false;
+
+const idleChatter = createIdleChatter({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    isLive: () => _isLive,
+    nowPlaying: () => (serato ? serato.nowPlaying() : null),
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+    quietWindowSec: Number(process.env.IDLE_QUIET_WINDOW_SEC ?? 120),
+    quietMax: Number(process.env.IDLE_QUIET_MAX ?? 4),
+    cooldownLiveSec: Number(process.env.IDLE_COOLDOWN_LIVE_SEC ?? 120),
+    cooldownOfflineSec: Number(process.env.IDLE_COOLDOWN_OFFLINE_SEC ?? 3600),
+});
+
+// ⛔ EVERY outgoing message restarts the idle cooldown, whatever produced it — a
+// shoutout, a hype-train line, a !song answer, a raid welcome. Max's rule is about
+// Mind_B0t having spoken AT ALL, not about this module having spoken:
+//     "the cooldown restarted after every mind_b0t comment. so if someone asks it a
+//      question which it answers, the cooldown engages or restarts"
+// Wrapping say() once here is why no other module needed touching.
+const _botSay = bot.say.bind(bot);
+bot.say = (sayChannel, message) => {
+    idleChatter.markSpoke();
+    return _botSay(sayChannel, message);
+};
+
 const topicCommands = createTopicCommands({
     say: (sayChannel, message) => bot.say(sayChannel, message),
     claudeCall: (text) => claude_ops.make_claude_call(text),
@@ -527,9 +575,15 @@ if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _h
             // ⛔ stream.online needs NO scope — it is the reset signal for the
             // chat-welcome seen-list, not a data read.
             {type: "stream.online", version: "1"},
+            // ⛔ stream.offline needs NO scope either. Added 21 Aug 2026 — it is the ONLY
+            // thing that tells the bot a stream ended. Without it _isLive would latch true
+            // after the first stream and never clear, so the 1-hour offline cooldown would
+            // never apply and the bot would keep the 2-minute live cadence forever.
+            {type: "stream.offline", version: "1"},
         ],
         onNotification: (type, event) => {
-            if (type === "stream.online") { chatWelcome.reset("stream.online"); return; }
+            if (type === "stream.online") { _isLive = true; chatWelcome.reset("stream.online"); return; }
+            if (type === "stream.offline") { _isLive = false; console.log("[idle_chatter] stream.offline — offline cadence"); return; }
             hypeTrain.onNotification(type, event);
         },
         WebSocketImpl: WebSocket,
@@ -543,6 +597,12 @@ if (EVENTSUB_CLIENT_ID && EVENTSUB_CLIENT_SECRET && EVENTSUB_REFRESH_TOKEN && _h
 
 bot.onMessage(async (channel, user, message, self) => {
     if (self) return;
+
+    // Activity for the quiet measure. ⛔ FIRST and UNCONDITIONAL — it must count even
+    // when !mbstop has muted the bot, and even when the message is a command, because
+    // it measures THE ROOM, not the bot's workload. noteMessage drops known bots
+    // itself (Max, 21 Aug 2026: count "only what humans say").
+    idleChatter.noteMessage(user);
 
     // Follow welcomes, checked before any command parsing. Returns true only
     // when the message really was StreamElements' follow announcement, so a
@@ -624,9 +684,30 @@ bot.onMessage(async (channel, user, message, self) => {
     // Stage 3 — broader triggering: fire on any trigger token appearing
     // anywhere in the message (replaces the old prefix-only COMMAND_NAME
     // startsWith match). Gated by the kill switch and the silent cooldowns.
-    if (_botEnabled && TRIGGER_REGEX.test(message)) {
-        if (_cooldownActive(user.username)) return; // rate-limited: drop silently, post nothing
+    // ⛔ Computed ONCE and reused below. A message that mentioned Mind_B0t must not
+    // also fall through to the unsolicited-reply path at the end of this handler —
+    // the trigger block does not return on its success path, so without this flag the
+    // bot answers a mention and then answers it AGAIN. Live that is masked by the idle
+    // cooldown; OFFLINE, where replies are ungated, it would double-post every time.
+    // (TRIGGER_REGEX is deliberately non-global, so .test() is stateless and safe to
+    // reuse — see the note on TRIGGER_REGEX_STRIP_ALL above.)
+    const _wasDirected = TRIGGER_REGEX.test(message);
 
+    if (_botEnabled && _wasDirected) {
+        // ⛔⛔ NO COOLDOWN CHECK HERE — Max, 21 Aug 2026: "Mind_b0t can always reply to
+        // direct comments to it, or direct replies to it, there shold be no limit for
+        // that." The `_cooldownActive` gate that stood here was removed on that ruling.
+        // ⚠ He was told what it was doing first: every trigger is a Claude call, and
+        // this was the only thing bounding how many a busy chat can spend. Ten people
+        // mentioning the bot cost one call before and cost ten now. That is his call.
+        //
+        // ⚑ _markFired is KEPT so the OTHER cooldowned paths (!song, topic commands)
+        // still see this as recent activity. Raised with Max 21 Aug 2026; he left it to
+        // this seat ("go with your recomendation") and it stays.
+        // ⇒ The consequence, stated so nobody re-opens it blind: mentioning Mind_B0t
+        // still suppresses that user's own !song briefly. That is COOLDOWN_PER_USER_SEC
+        // = 10s and COOLDOWN_GLOBAL_SEC = 5s, not the 2-minute idle cooldown — the two
+        // are unrelated, and conflating them is what made this look worth changing.
         _markFired(user.username);
 
         // Strip the matched trigger token so Claude gets a clean message.
@@ -667,6 +748,20 @@ bot.onMessage(async (channel, user, message, self) => {
             bot.say(channel, response);
         }
     }
+
+    // ⇒ NOT directed at Mind_B0t. During a quiet stretch it answers anyway (Max,
+    // 21 Aug 2026: "reply to a new comment made by another chatter when it happens").
+    //
+    // ⛔⛔ THE GUARD IS LOAD-BEARING, NOT DEFENSIVE. The trigger block above does NOT
+    // return on its success path, so reaching this line does not mean the message was
+    // unaddressed. An earlier version of this comment asserted that it did, and it was
+    // simply wrong: a mention would be answered by the trigger path and then answered
+    // again here. Live the idle cooldown hides it (bot.say -> markSpoke fires first);
+    // offline, where replies are ungated by design, it double-posts every time.
+    //
+    // ⚠ NOT awaited — a Claude call must not delay the handler returning, exactly as
+    // the welcome path avoids blocking !song behind one. It swallows its own errors.
+    if (!_wasDirected) idleChatter.maybeReplyTo(channel, user, message);
 });
 
 app.ws('/check-for-updates', (ws, req) => {
