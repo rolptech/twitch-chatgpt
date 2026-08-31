@@ -55,7 +55,15 @@ export class ClaudeOperations {
                 // licensing a 1,600-char reply (Max ruled against that ceiling explicitly).
                 // ⛔ This is a GUARDRAIL, not a length control. The length rule lives in
                 // file_context.txt; raising this instead of fixing that is the wrong fix.
-                max_tokens: 300,
+                // ⛔ 200, NOT 300 (Max, 30 Aug 2026). Measured on Philo_B0t, which
+                // shares this file: at 300 the model FILLS the budget — 1,182 characters
+                // across three chat messages, and severed mid-sentence at the ceiling
+                // anyway. A prompt asking for brevity cannot beat the budget; the model
+                // writes to whatever room it is given.
+                // ⚠ This is the ONLY max_tokens in the bot and every Claude path uses it:
+                // triggers, !song, welcomes, thanks, shoutouts, idle chatter, hype trains.
+                // Env-overridable so it can be retuned on Render without a deploy.
+                max_tokens: Number(process.env.MAX_TOKENS || 200),
                 temperature: 1,
             });
 
