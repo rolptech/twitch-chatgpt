@@ -126,6 +126,10 @@ if (!ENABLE_CHANNEL_POINTS) {
 // replace instead, so that bug class can't recur.
 // The companion bot. Its messages reach follow_thanks (above) but never any
 // conversational path. Env-overridable in case the account is ever renamed.
+// Philo_B0t's own trigger tokens. Built with the SAME pattern logic as
+// TRIGGER_REGEX below, so "@pb" cannot match inside an email or a word.
+const PHILO_TRIGGER_TOKENS = ["@Philo_B0t", "philobot", "philob0t", "philo_b0t", "philo_bot", "@pb"];
+
 // Commands belonging to other bots. Mind_B0t must not treat them as chat.
 const FOREIGN_COMMANDS = String(process.env.FOREIGN_COMMANDS || "!philo,!pbstop,!pbstart")
     .split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
@@ -141,6 +145,7 @@ function _triggerTokenToPattern(tok) {
 }
 
 const TRIGGER_REGEX = new RegExp(TRIGGER_TOKENS.map(_triggerTokenToPattern).join("|"), "i");
+const PHILO_TRIGGER_REGEX = new RegExp(PHILO_TRIGGER_TOKENS.map(_triggerTokenToPattern).join("|"), "i");
 // Separate global/case-insensitive copy used ONLY for stripping the matched token(s)
 // out of the outgoing Claude text (S3 nit: the non-global TRIGGER_REGEX above must stay
 // non-global for .test() — a "g" flag there would introduce lastIndex statefulness across
@@ -729,6 +734,17 @@ bot.onMessage(async (channel, user, message, self) => {
     //   commands only -- NOT all "!" messages, because those include StreamElements
     //   commands and Mind_B0t's own !song.
     if (FOREIGN_COMMANDS.some(c => _fmsg === c || _fmsg.startsWith(c + " "))) return;
+
+    // ⛔ A MESSAGE ADDRESSED TO PHILO_B0T IS NOT ADDRESSED TO YOU (Max, 30 Aug 2026:
+    // "mind_b0t needs to not respond to any comments addressing philo_bot as that
+    // gets confusing").
+    // [observed live 18:20] Max typed "@pb tell us about Hiss" and Mind_B0t answered
+    // it — @pb is Philo_B0t's trigger, so to Mind_B0t it read as an ordinary
+    // undirected comment and reached the reply path. Two bots answering one question
+    // is the confusion.
+    // ⚠ UNLESS IT ALSO ADDRESSES YOU. "@mb and @pb, thoughts?" is addressed to both,
+    // and going silent there would be a worse bug than the one being fixed.
+    if (PHILO_TRIGGER_REGEX.test(message) && !TRIGGER_REGEX.test(message)) return;
 
     // First-message-of-stream welcome. ⛔ Does NOT return — the message must
     // still reach command handling below. Max wants the command answered too;
