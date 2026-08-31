@@ -89,8 +89,41 @@ export function chunkText(text, maxLength) {
 
 // The shape every caller actually wants: chunk, then post one part per second
 // so Twitch's own rate limiting doesn't drop the tail.
+
+// ---------------------------------------------------------------------------
+// ⛔⛔ NEVER POST AN UNFINISHED SENTENCE (ported from Philo_B0t, 30 Aug 2026).
+//
+// Philo_B0t ended every reply mid-clause — "belonging", "the one", "And then he
+// would". THREE ROUNDS were spent tuning max_tokens (300 → 200 → 250) before it
+// was established that the ceiling was not the cause: the final sample stopped a
+// third short of its limit and was severed anyway.
+//
+// ⇒ This fixes the SYMPTOM deterministically without needing the cause. If text
+//   does not end on terminal punctuation, cut back to the last sentence that does.
+//
+// ⚠ Mind_B0t is newly exposed to this: max_tokens dropped 300 → 200 on 30 Aug, and
+//   file_context.txt still asks shoutouts to run 600-800 characters — right at the
+//   new ceiling, and it explicitly instructs "plan the ending so the last sentence
+//   completes", which it can no longer reliably do unaided.
+//
+// ⛔ Applied in sayChunked (BEFORE chunking) and never to an individual chunk —
+//   chunk 1 of 3 legitimately ends mid-sentence and trimming it would delete the
+//   rest of the message.
+export function completeSentencesOnly(text) {
+    const t = String(text == null ? "" : text).trim();
+    if (!t) return t;
+    if (/[.!?…"'’”\)]$/.test(t)) return t;
+    const m = t.match(/^[\s\S]*[.!?…]["'’”\)]?(?=\s|$)/);
+    const kept = m ? m[0].trim() : "";
+    // Proportional, not a fixed floor: a fixed minimum rejected the salvage on
+    // short replies and returned the severed text unchanged — the very bug this
+    // prevents. If trimming would discard more than a third, the reply was mostly
+    // one long unfinished clause and the original is the lesser evil.
+    return (kept.length >= t.length * 0.66) ? kept : t;
+}
+
 export function sayChunked(say, channel, text, maxLength, setTimeoutFn = setTimeout) {
-    const parts = chunkText(text, maxLength);
+    const parts = chunkText(completeSentencesOnly(text), maxLength);
     if (parts.length === 1) { say(channel, parts[0]); return parts; }
     parts.forEach((part, index) => setTimeoutFn(() => say(channel, part), 1000 * index));
     return parts;
