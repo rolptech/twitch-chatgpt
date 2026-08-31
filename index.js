@@ -126,6 +126,9 @@ if (!ENABLE_CHANNEL_POINTS) {
 // replace instead, so that bug class can't recur.
 // The companion bot. Its messages reach follow_thanks (above) but never any
 // conversational path. Env-overridable in case the account is ever renamed.
+// Commands belonging to other bots. Mind_B0t must not treat them as chat.
+const FOREIGN_COMMANDS = String(process.env.FOREIGN_COMMANDS || "!philo,!pbstop,!pbstart")
+    .split(",").map(c => c.trim().toLowerCase()).filter(Boolean);
 const PHILO_ACCOUNT = String(process.env.PHILO_ACCOUNT || "philo_b0t").toLowerCase();
 
 const TRIGGER_TOKENS = ["@Mind_B0t", "mindbot", "mindb0t", "mind_b0t", "mind_bot", "@mb"];
@@ -715,6 +718,17 @@ bot.onMessage(async (channel, user, message, self) => {
     // ⇒ Named account, not a category. Everything below here is conversational:
     //   welcome, topic commands, !song, channel points, and the trigger reply.
     if (String((user && user.username) || "").toLowerCase() === PHILO_ACCOUNT) return;
+
+    const _fmsg = String(message || "").trim().toLowerCase();
+    // ⛔ ANOTHER BOT'S COMMAND IS NOT CHAT (Max, 30 Aug 2026).
+    // [observed live 17:51] Max typed "!philo" and Mind_B0t answered it -- "Ooh,
+    // philosophical vibes incoming!" -- because the message came from a HUMAN and was
+    // not directed at Mind_B0t, so it reached the reply-to-undirected-comments path.
+    // The bot-to-bot guard above cannot catch this: the sender is Max, not Philo_B0t.
+    // ⇒ A command addressed to another bot is traffic, not conversation. Named
+    //   commands only -- NOT all "!" messages, because those include StreamElements
+    //   commands and Mind_B0t's own !song.
+    if (FOREIGN_COMMANDS.some(c => _fmsg === c || _fmsg.startsWith(c + " "))) return;
 
     // First-message-of-stream welcome. ⛔ Does NOT return — the message must
     // still reach command handling below. Max wants the command answered too;
