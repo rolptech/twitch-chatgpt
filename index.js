@@ -13,7 +13,7 @@ import {createSubThanks} from './sub_thanks.js';
 import {createFollowThanks} from './follow_thanks.js';
 import {createCheerThanks} from './cheer_thanks.js';
 import {createTopicCommands} from './topic_commands.js';
-import {chunkText, sayChunked} from './chunk_text.js';
+import {completeSentencesOnly, chunkText, sayChunked} from './chunk_text.js';
 import {createShoutout, profileLines} from './shoutout.js';
 import {createEventSub} from './eventsub.js';
 import {createHypeTrain} from './hype_train.js';
@@ -344,7 +344,7 @@ bot.onRaided(async (channel, username, viewers) => {
     // Same MAX_LENGTH splitter used by every other path that posts a Claude
     // response to chat.
     if (response.length > MAX_LENGTH) {
-        const messages = chunkText(response, MAX_LENGTH);
+        const messages = chunkText(completeSentencesOnly(response), MAX_LENGTH);
         messages.forEach((message, index) => {
             setTimeout(() => {
                 bot.say(channel, message);
@@ -781,7 +781,7 @@ bot.onMessage(async (channel, user, message, self) => {
         // split response if it exceeds twitch chat message length limit
         // send multiples messages with a delay in between (same splitter as the trigger path)
         if (songResponse.length > MAX_LENGTH) {
-            const songMessages = chunkText(songResponse, MAX_LENGTH);
+            const songMessages = chunkText(completeSentencesOnly(songResponse), MAX_LENGTH);
             songMessages.forEach((message, index) => {
                 setTimeout(() => {
                     bot.say(channel, message);
@@ -873,7 +873,7 @@ bot.onMessage(async (channel, user, message, self) => {
         // split response if it exceeds twitch chat message length limit
         // send multiples messages with a delay in between
         if (response.length > MAX_LENGTH) {
-            const messages = chunkText(response, MAX_LENGTH);
+            const messages = chunkText(completeSentencesOnly(response), MAX_LENGTH);
             messages.forEach((message, index) => {
                 setTimeout(() => {
                     bot.say(channel, message);
@@ -947,7 +947,7 @@ app.get('/gpt/:text', async (req, res) => {
     // define function to check history length and perform bot response
     const answer_question = async (answer) => {
         if (answer.length > MAX_LENGTH) {
-            const messages = chunkText(answer, MAX_LENGTH);
+            const messages = chunkText(completeSentencesOnly(answer), MAX_LENGTH);
             messages.forEach((message, index) => {
                 setTimeout(() => {
                     bot.say(channel, message);
