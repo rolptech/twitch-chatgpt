@@ -124,6 +124,10 @@ if (!ENABLE_CHANNEL_POINTS) {
 // one character and leaked trigger text into the Claude prompt. The
 // anywhere-match rewrite below strips the actual matched token via regex
 // replace instead, so that bug class can't recur.
+// The companion bot. Its messages reach follow_thanks (above) but never any
+// conversational path. Env-overridable in case the account is ever renamed.
+const PHILO_ACCOUNT = String(process.env.PHILO_ACCOUNT || "philo_b0t").toLowerCase();
+
 const TRIGGER_TOKENS = ["@Mind_B0t", "mindbot", "mindb0t", "mind_b0t", "mind_bot", "@mb"];
 
 function _triggerTokenToPattern(tok) {
@@ -691,6 +695,26 @@ bot.onMessage(async (channel, user, message, self) => {
     // compare. Awaited so a Claude failure inside cannot reject unhandled —
     // it swallows its own errors and logs them.
     if (await followThanks.onMessage(channel, user, message)) return;
+
+    // ---------------------------------------------------------------------------
+    // ⛔⛔ DO NOT CONVERSE WITH PHILO_B0T (Max, 30 Aug 2026: "it should not engage in
+    // conversation with mind_b0t, and vice versa").
+    //
+    // [observed live 30 Aug 17:39] One !philo produced SEVEN bot messages: Philo_B0t
+    // answered, Mind_B0t replied to its content, Mind_B0t then WELCOMED "@Philo_B0t",
+    // and that @mention pulled Philo_B0t back for three more. It terminated on
+    // cooldowns rather than running away, but it should not have started.
+    //
+    // ⛔⛔ PLACEMENT IS LOAD-BEARING — THIS MUST STAY *BELOW* followThanks.
+    // follow_thanks reads STREAMELEMENTS' chat announcements to detect follows, and
+    // its own comment calls that sender check "a security boundary, not a tidiness
+    // rule". A blanket ignore-all-bots guard at the top of this handler -- the
+    // obvious fix, and the one Philo_B0t itself uses -- would SILENTLY KILL FOLLOW
+    // THANK-YOUS. Announcer-reading paths must keep seeing bot messages.
+    //
+    // ⇒ Named account, not a category. Everything below here is conversational:
+    //   welcome, topic commands, !song, channel points, and the trigger reply.
+    if (String((user && user.username) || "").toLowerCase() === PHILO_ACCOUNT) return;
 
     // First-message-of-stream welcome. ⛔ Does NOT return — the message must
     // still reach command handling below. Max wants the command answered too;

@@ -91,6 +91,7 @@ export const DEFAULT_BOT_NAMES = [
     "fossabot",
     "wizebot",
     "mind_b0t",
+    "philo_b0t",   // added 30 Aug 2026 — a bot talking is not a busy room
 ];
 
 // ---------------------------------------------------------------------------
