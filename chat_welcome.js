@@ -59,6 +59,7 @@ const DEFAULT_DELAY_SEC = 5;
 // alias account would not be caught by it.
 const DEFAULT_EXCLUDED = [
     "streamelements", "sery_bot", "streamdjbot", "mind_b0t", "mind_bot2",
+    "philo_b0t",
     "nightbot", "moobot", "streamlabs",
 ];
 
