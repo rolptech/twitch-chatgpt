@@ -55,15 +55,35 @@ export class ClaudeOperations {
                 // licensing a 1,600-char reply (Max ruled against that ceiling explicitly).
                 // ⛔ This is a GUARDRAIL, not a length control. The length rule lives in
                 // file_context.txt; raising this instead of fixing that is the wrong fix.
-                // ⛔ 200, NOT 300 (Max, 30 Aug 2026). Measured on Philo_B0t, which
-                // shares this file: at 300 the model FILLS the budget — 1,182 characters
-                // across three chat messages, and severed mid-sentence at the ceiling
-                // anyway. A prompt asking for brevity cannot beat the budget; the model
-                // writes to whatever room it is given.
+                // ⛔⛔ THIS IS A BACKSTOP, NOT THE LENGTH CONTROL. Inverted 30 Aug 2026.
+                //
+                // ⚠ THIS REVERSES AN EARLIER RULING OF MAX'S THE SAME DAY — "200, NOT 300
+                // ... at 300 the model FILLS the budget, 1,182 characters, severed at the
+                // ceiling anyway. A prompt asking for brevity cannot beat the budget."
+                // ⇒ Reversed by him on 30 Aug after the premise was falsified, NOT ignored.
+                //
+                // ⭐ WHY THE PREMISE FELL: that 300 test ran against the OLD prompt, which
+                // opened "one long, winding, unhurried statement -- follow the thought
+                // wherever it leads" and bolted brevity on at the end. It was not a prompt
+                // asking for brevity; it was a prompt asking for LENGTH that also asked for
+                // brevity, and the first clause set the shape. The budget was never what it
+                // was losing to.
+                //
+                // ✅ [measured on Philo_B0t 30 Aug 23:54, same file, ceiling 300, NEW prompt]
+                //   output=198 stop=end_turn — 102 tokens of headroom left UNUSED, exactly
+                //   five sentences, finished on its own. The model does NOT simply fill
+                //   whatever room it is given; it fills whatever room the PROMPT implies.
+                //
+                // ⇒ Length now comes from file_context.txt ("FOUR OR FIVE SENTENCES at
+                //   most"), which is countable. A token ceiling is not — the model cannot
+                //   count its own tokens, so a ceiling can only ever AMPUTATE.
+                // ⇒ If replies get LONGER, the prompt lost. Fix the prompt. Do NOT reach
+                //   for this number — three rounds (300→200→250) already proved that path.
+                //
                 // ⚠ This is the ONLY max_tokens in the bot and every Claude path uses it:
                 // triggers, !song, welcomes, thanks, shoutouts, idle chatter, hype trains.
                 // Env-overridable so it can be retuned on Render without a deploy.
-                max_tokens: Number(process.env.MAX_TOKENS || 200),
+                max_tokens: Number(process.env.MAX_TOKENS || 300),
                 temperature: 1,
             });
 
@@ -71,7 +91,15 @@ export class ClaudeOperations {
             // logs (verification checklist wants a cache_read_input_tokens sighting on a
             // repeat call).
             if (response.usage) {
-                console.log(`Usage: input=${response.usage.input_tokens} cache_creation=${response.usage.cache_creation_input_tokens ?? 0} cache_read=${response.usage.cache_read_input_tokens ?? 0} output=${response.usage.output_tokens}`);
+                console.log(`Usage: input=${response.usage.input_tokens} cache_creation=${response.usage.cache_creation_input_tokens ?? 0} cache_read=${response.usage.cache_read_input_tokens ?? 0} output=${response.usage.output_tokens} stop=${response.stop_reason}`);
+                // ⛔ stop=max_tokens means the model was CUT, not that it finished.
+                // completeSentencesOnly() removes the severed clause, so a truncated
+                // reply and a landed one look IDENTICAL in chat. This field is the
+                // only thing that tells them apart — and its absence is why three
+                // rounds of ceiling-tuning were spent guessing.
+                if (response.stop_reason === "max_tokens") {
+                    console.log(`⛔ TRUNCATED at the ${response.usage.output_tokens}-token ceiling — the ending was cut, then trimmed away.`);
+                }
             }
 
             // Check if response has content
