@@ -527,8 +527,8 @@ const idleChatter = createIdleChatter({
     maxLength: MAX_LENGTH,
     quietWindowSec: Number(process.env.IDLE_QUIET_WINDOW_SEC ?? 120),
     quietMax: Number(process.env.IDLE_QUIET_MAX ?? 4),
-    cooldownLiveSec: Number(process.env.IDLE_COOLDOWN_LIVE_SEC ?? 120),
-    cooldownOfflineSec: Number(process.env.IDLE_COOLDOWN_OFFLINE_SEC ?? 3600),
+    cooldownLiveSec: Number(process.env.IDLE_COOLDOWN_LIVE_SEC ?? 240),
+    cooldownOfflineSec: Number(process.env.IDLE_COOLDOWN_OFFLINE_SEC ?? 7200),
 });
 
 // ⛔ EVERY outgoing message restarts the idle cooldown, whatever produced it — a

@@ -68,15 +68,22 @@
 
 const DEFAULT_QUIET_WINDOW_SEC = 120;
 const DEFAULT_QUIET_MAX = 4;          // FEWER than this in the window == quiet
-const DEFAULT_COOLDOWN_LIVE_SEC = 120;
+// ⛔ THESE TWO ARE DEAD CODE — index.js ALWAYS passes cooldownLiveSec and
+// cooldownOfflineSec, so its `??` fallbacks are the values that actually run. They are
+// kept in step so a reader of this file is not told a different number than the bot uses.
+// ⚠ backoffMaxSec below is NOT passed by index.js, so ITS default here IS live.
+const DEFAULT_COOLDOWN_LIVE_SEC = 240;
 // ⛔ LIVE ONLY. The live cooldown DOUBLES for each unprompted comment made into a room
-// where nobody has spoken — 2, 4, 8, 16 minutes — and stops at this ceiling so the bot
+// where nobody has spoken — 4, 8, 16, 32 minutes — and stops at this ceiling so the bot
 // never goes fully silent while Max is streaming (his call, 21 Aug 2026).
-// ⚠ Offline is deliberately EXEMPT and stays flat at an hour: an hour is already a long
+// ⚠ Offline is deliberately EXEMPT and stays flat at TWO hours: that is already a long
 // wait, and backing off on top of it would mean multi-hour gaps in a room where the
 // whole point is that someone might wander in.
-const DEFAULT_BACKOFF_MAX_SEC = 960;
-const DEFAULT_COOLDOWN_OFFLINE_SEC = 3600;
+// ⚠ 960 -> 1920 on Max's instruction, 1 Sep 2026: "make it 4-8-16-32". Doubling the BASE
+// alone had shortened the ladder to three rungs (it hit the old 960 cap at the second
+// comment); doubling the ceiling too restores the four-rung shape at the new scale.
+const DEFAULT_BACKOFF_MAX_SEC = 1920;
+const DEFAULT_COOLDOWN_OFFLINE_SEC = 7200;
 const DEFAULT_TICK_SEC = 15;
 
 // Bots whose messages must not count as chat activity. Lowercased, no leading @/#.
