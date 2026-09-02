@@ -61,20 +61,20 @@ test('the window expires — old messages stop counting', () => {
     assert.equal(h.instance.isQuiet(), true, 'past the window it is quiet again');
 });
 
-test('cooldown is 2 min live and 1 hour offline', () => {
+test('cooldown is 4 min live and 2 hours offline', () => {
     let live = true;
     const h = makeHarness({ isLive: () => live });
     h.instance.markSpoke();
     assert.equal(h.instance.cooldownActive(), true);
-    h.advance(121);
-    assert.equal(h.instance.cooldownActive(), false, 'live cooldown clears after 2 min');
+    h.advance(241);
+    assert.equal(h.instance.cooldownActive(), false, 'live cooldown clears after 4 min');
 
     live = false;
     h.instance.markSpoke();
-    h.advance(121);
-    assert.equal(h.instance.cooldownActive(), true, 'offline still gated after 2 min');
-    h.advance(3600);
-    assert.equal(h.instance.cooldownActive(), false, 'offline clears after an hour');
+    h.advance(241);
+    assert.equal(h.instance.cooldownActive(), true, 'offline still gated after 4 min');
+    h.advance(7200);
+    assert.equal(h.instance.cooldownActive(), false, 'offline clears after two hours');
 });
 
 test('ANY mind_b0t message restarts the cooldown', async () => {
@@ -90,7 +90,7 @@ test('live: an unprompted comment waits for the cooldown', async () => {
     const h = makeHarness({ isLive: () => true });
     h.instance.markSpoke();
     assert.equal(await h.instance._tick('#c'), false, 'gated inside the cooldown');
-    h.advance(121);
+    h.advance(241);
     assert.equal(await h.instance._tick('#c'), true, 'fires once it clears');
     assert.equal(h.sayCalls.length, 1);
 });
@@ -308,12 +308,15 @@ test('without a title the music prompts still read cleanly', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Backoff: unprompted comments into an empty room double the wait — 2, 4, 8, 16 —
+// Backoff: unprompted comments into an empty room double the wait — 4, 8, 16 —
 // capped at 16 min, live only, and reset by ANY human message (Max, 21 Aug 2026).
 
-test('the live cooldown doubles 2 -> 4 -> 8 -> 16 and stops at 16', async () => {
+test('the live cooldown doubles 4 -> 8 -> 16 and stops at 16', async () => {
     const h = makeHarness({ isLive: () => true });
-    const expected = [120, 240, 480, 960, 960, 960];
+    // ⚠ BASE DOUBLED 120 -> 240 (Max, 1 Sep 2026) and the CEILING left at 960, so the
+    // ladder is ONE RUNG SHORTER than before — it caps at the second comment, not the
+    // fourth. A consequence of the change, recorded so it is not read as a regression.
+    const expected = [240, 480, 960, 960, 960, 960];
     for (const want of expected) {
         h.advance(100000);                       // clear whatever the current wait is
         assert.equal(await h.instance._tick('#c'), true);
@@ -323,24 +326,24 @@ test('the live cooldown doubles 2 -> 4 -> 8 -> 16 and stops at 16', async () => 
 
 test('the backoff actually gates — it is not just a reported number', async () => {
     const h = makeHarness({ isLive: () => true });
-    h.advance(100000); await h.instance._tick('#c');   // streak 1 -> next wait 120s
-    h.advance(100000); await h.instance._tick('#c');   // streak 2 -> next wait 240s
-    assert.equal(h.instance.cooldownSec, 240);
-    h.advance(200);
-    assert.equal(await h.instance._tick('#c'), false, 'still gated at 200s of a 240s wait');
-    h.advance(50);
-    assert.equal(await h.instance._tick('#c'), true, 'fires once 240s has passed');
+    h.advance(100000); await h.instance._tick('#c');   // streak 1 -> next wait 240s
+    h.advance(100000); await h.instance._tick('#c');   // streak 2 -> next wait 480s
+    assert.equal(h.instance.cooldownSec, 480);
+    h.advance(400);
+    assert.equal(await h.instance._tick('#c'), false, 'still gated at 400s of a 480s wait');
+    h.advance(100);
+    assert.equal(await h.instance._tick('#c'), true, 'fires once 480s has passed');
 });
 
 test('ANY human message resets the backoff to the base', async () => {
     const h = makeHarness({ isLive: () => true });
     for (let i = 0; i < 3; i++) { h.advance(100000); await h.instance._tick('#c'); }
     assert.equal(h.instance.selfStreak, 3);
-    assert.equal(h.instance.cooldownSec, 480, '3 comments in -> 8 minutes');
+    assert.equal(h.instance.cooldownSec, 960, '3 comments in -> 16 minutes, the cap');
 
     h.instance.noteMessage({ username: 'a_human' });
     assert.equal(h.instance.selfStreak, 0);
-    assert.equal(h.instance.cooldownSec, 120, 'back to 2 minutes');
+    assert.equal(h.instance.cooldownSec, 240, 'back to 4 minutes');
 });
 
 test('a BOT message does not reset the backoff', async () => {
@@ -359,9 +362,9 @@ test('replying to a human does not itself escalate the streak', async () => {
     assert.equal(h.instance.selfStreak, 0, 'a reply is not an unprompted comment');
 });
 
-test('offline stays flat at an hour — no backoff on top', async () => {
+test('offline stays flat at two hours — no backoff on top', async () => {
     const h = makeHarness({ isLive: () => false });
     for (let i = 0; i < 4; i++) { h.advance(100000); await h.instance._tick('#c'); }
     assert.equal(h.instance.selfStreak, 4, 'the counter still moves');
-    assert.equal(h.instance.cooldownSec, 3600, 'but offline ignores it');
+    assert.equal(h.instance.cooldownSec, 7200, 'but offline ignores it');
 });
