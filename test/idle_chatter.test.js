@@ -308,15 +308,15 @@ test('without a title the music prompts still read cleanly', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Backoff: unprompted comments into an empty room double the wait — 4, 8, 16 —
-// capped at 16 min, live only, and reset by ANY human message (Max, 21 Aug 2026).
+// Backoff: unprompted comments into an empty room double the wait — 4, 8, 16, 32 —
+// capped at 32 min, live only, and reset by ANY human message (Max, 21 Aug 2026).
 
-test('the live cooldown doubles 4 -> 8 -> 16 and stops at 16', async () => {
+test('the live cooldown doubles 4 -> 8 -> 16 -> 32 and stops at 32', async () => {
     const h = makeHarness({ isLive: () => true });
-    // ⚠ BASE DOUBLED 120 -> 240 (Max, 1 Sep 2026) and the CEILING left at 960, so the
-    // ladder is ONE RUNG SHORTER than before — it caps at the second comment, not the
-    // fourth. A consequence of the change, recorded so it is not read as a regression.
-    const expected = [240, 480, 960, 960, 960, 960];
+    // ⚠ BASE 120 -> 240 AND CEILING 960 -> 1920 (Max, 1 Sep 2026: "make it 4-8-16-32").
+    // Doubling the base alone had cut the ladder to three rungs; doubling both keeps the
+    // four-rung shape at the new scale.
+    const expected = [240, 480, 960, 1920, 1920, 1920];
     for (const want of expected) {
         h.advance(100000);                       // clear whatever the current wait is
         assert.equal(await h.instance._tick('#c'), true);
@@ -339,7 +339,7 @@ test('ANY human message resets the backoff to the base', async () => {
     const h = makeHarness({ isLive: () => true });
     for (let i = 0; i < 3; i++) { h.advance(100000); await h.instance._tick('#c'); }
     assert.equal(h.instance.selfStreak, 3);
-    assert.equal(h.instance.cooldownSec, 960, '3 comments in -> 16 minutes, the cap');
+    assert.equal(h.instance.cooldownSec, 960, '3 comments in -> 16 minutes');
 
     h.instance.noteMessage({ username: 'a_human' });
     assert.equal(h.instance.selfStreak, 0);
