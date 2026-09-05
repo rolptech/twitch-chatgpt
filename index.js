@@ -21,6 +21,7 @@ import {createWatchStreak} from './watch_streak.js';
 import {createChatWelcome} from './chat_welcome.js';
 import {createIdleChatter} from './idle_chatter.js';
 import {createMapPromo} from './map_promo.js';
+import {createCoverMode} from './cover_mode.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -244,6 +245,14 @@ function _buildRaidPrompt(username, viewers, profile) {
     const lines = [`[RAID] ${username} just raided the channel with ${viewers} viewers.`];
     lines.push(...profileLines(profile, _profileHelpers));
     lines.push("Give them a warm, in-character welcome and shoutout.");
+    // ⛔ COVER MODE — Max, 4 Sep 2026: "in this mode it should thank raiders and apologize
+    //   for my temporary absence". Empty string when the mode is off, so the prompt is
+    //   byte-identical to today's on the normal path.
+    // ⚠ Read at BUILD time, not at handler entry: the raid welcome is held for
+    //   RAID_SHOUTOUT_DELAY_SEC, and this line must reflect the mode as it is when the
+    //   message is composed rather than a state captured earlier.
+    const _coverRaid = coverMode.raidLine();
+    if (_coverRaid) lines.push(_coverRaid);
     return lines.join("\n");
 }
 
@@ -531,6 +540,9 @@ const idleChatter = createIdleChatter({
     quietMax: Number(process.env.IDLE_QUIET_MAX ?? 4),
     cooldownLiveSec: Number(process.env.IDLE_COOLDOWN_LIVE_SEC ?? 240),
     cooldownOfflineSec: Number(process.env.IDLE_COOLDOWN_OFFLINE_SEC ?? 7200),
+    // ⇒ Getters, not values: the mode flips mid-stream and nothing is rebuilt.
+    isCovering: () => coverMode.isOn(),
+    coverCooldownSec: () => coverMode.coverCooldownSec(),
 });
 
 // ⛔ EVERY outgoing message restarts the idle cooldown, whatever produced it — a
@@ -553,6 +565,34 @@ bot.say = (sayChannel, message) => {
 // ⛔ TEMPORARY — Max, 4 Sep 2026: "this will be temporary, but yes for now I want it
 //   actively promoting the map in that fashion". ⇒ Delete this block and the import to
 //   remove it, or set MAP_PROMO_ENABLED=false. See map_promo.js for what it will not do.
+// ⛔ COVER MODE — Max, 4 Sep 2026. !mbcover / !mbback, mod-and-broadcaster only, so he can
+//   flip it from his phone mid-stream. NO auto-off of any kind: not a timer, and not the
+//   stream ending ("don't worry about stopping it if the stream ends"). In-memory, like the
+//   kill switch, so a deploy or a restart clears it.
+const coverMode = createCoverMode({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+    cooldownSec: Number(process.env.COVER_COOLDOWN_SEC ?? 45),
+});
+
+// ⛔⛔ COVER CONTEXT, ADDED AT THE ONE PLACE EVERY CLAUDE CALL PASSES THROUGH.
+//   There are 18 call sites; wrapping the method once is the same technique already used
+//   for bot.say above, and it cannot be forgotten at a new one.
+// ⇒ IT PREPENDS TO THE USER TEXT, NOT THE SYSTEM PROMPT. The system prompt is wrapped in
+//   cache_control:ephemeral and is ~85-90% of the bot's token cost — editing it whenever
+//   the mode flips would invalidate that cache on every switch, and on every switch back.
+//   The user text is not cached, so prepending there costs one short line per call.
+// ⚠ Empty string when the mode is off ⇒ the text handed to Claude is byte-identical to
+//   today's, so nothing about normal operation changes.
+const _rawClaudeCall = claude_ops.make_claude_call.bind(claude_ops);
+claude_ops.make_claude_call = (text) => {
+    const ctx = coverMode.contextLine();
+    return _rawClaudeCall(ctx ? `${ctx}\n\n${text}` : text);
+};
+
 const mapPromo = createMapPromo({
     say: (sayChannel, message) => bot.say(sayChannel, message),
     claudeCall: (text) => claude_ops.make_claude_call(text),
@@ -821,6 +861,19 @@ bot.onMessage(async (channel, user, message, self) => {
         if (!_isModOrBroadcaster(user)) return;
         _botEnabled = (_msg === "!mbstart");
         console.log(`[mind_b0t] Claude trigger path ${_botEnabled ? "ENABLED" : "DISABLED"} by ${user.username}`);
+        return;
+    }
+
+    // Cover mode — !coverstart / !coverend (Max's names, 4 Sep 2026). Mod/broadcaster-only,
+    // same shape as the kill switch above. Verified
+    // that neither name matches TRIGGER_REGEX, so invoking one cannot also trigger a reply.
+    // ⛔ Non-mods are ignored SILENTLY: announcing the refusal would tell chat the command
+    //   exists and invite people to try it.
+    if (_msg === "!coverstart" || _msg === "!coverend") {
+        if (!_isModOrBroadcaster(user)) return;
+        if (_msg === "!coverstart") await coverMode.turnOn(channel);
+        else await coverMode.turnOff(channel);
+        console.log(`[mind_b0t] cover mode ${coverMode.isOn() ? "ON" : "OFF"} by ${user.username}`);
         return;
     }
 
