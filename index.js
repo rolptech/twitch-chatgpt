@@ -20,6 +20,7 @@ import {createHypeTrain} from './hype_train.js';
 import {createWatchStreak} from './watch_streak.js';
 import {createChatWelcome} from './chat_welcome.js';
 import {createIdleChatter} from './idle_chatter.js';
+import {createMapPromo} from './map_promo.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -275,6 +276,7 @@ bot.onConnected((addr, port) => {
     // nothing can be said before the bot is connected, and onConnected can fire again
     // on a reconnect — start() is idempotent, so a reconnect does not stack timers.
     if (_hypeChannelName) idleChatter.start(_hypeChannelName);
+    if (_hypeChannelName) mapPromo.start(_hypeChannelName);
 
     // ⛔⛔ SETTLE _isLive BY ASKING, NOT BY WAITING. stream.online/offline are
     // TRANSITIONS: a process that starts mid-stream has already missed stream.online
@@ -538,10 +540,30 @@ const idleChatter = createIdleChatter({
 //      question which it answers, the cooldown engages or restarts"
 // Wrapping say() once here is why no other module needed touching.
 const _botSay = bot.say.bind(bot);
+// ⇒ map_promo needs the same fact idleChatter.markSpoke() records — when the bot last
+//   said ANYTHING — but it must not reset idle_chatter's cooldown by asking for it.
+//   One stamp here, read by both, rather than a second wrapper that could drift.
+let _lastSpokeAt = 0;
 bot.say = (sayChannel, message) => {
     idleChatter.markSpoke();
+    _lastSpokeAt = Date.now();
     return _botSay(sayChannel, message);
 };
+
+// ⛔ TEMPORARY — Max, 4 Sep 2026: "this will be temporary, but yes for now I want it
+//   actively promoting the map in that fashion". ⇒ Delete this block and the import to
+//   remove it, or set MAP_PROMO_ENABLED=false. See map_promo.js for what it will not do.
+const mapPromo = createMapPromo({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    isLive: () => _isLive,
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+    lastSpokeAt: () => _lastSpokeAt,
+    intervalSec: Number(process.env.MAP_PROMO_INTERVAL_SEC ?? 900),
+    enabled: String(process.env.MAP_PROMO_ENABLED ?? 'true').toLowerCase() !== 'false',
+});
 
 const topicCommands = createTopicCommands({
     say: (sayChannel, message) => bot.say(sayChannel, message),
