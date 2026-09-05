@@ -201,6 +201,11 @@ const CATEGORIES = [
 ];
 
 export function createIdleChatter({
+    // ⛔ COVER MODE (Max, 4 Sep 2026). Both default to "off" so every existing caller and
+    //   every existing test behaves exactly as before — this file's behaviour is unchanged
+    //   unless something actively turns the mode on.
+    isCovering = () => false,
+    coverCooldownSec = () => 45,
     say,
     claudeCall,
     isEnabled = () => true,
@@ -258,11 +263,18 @@ export function createIdleChatter({
     }
 
     function isQuiet() {
+        // ⇒ While Max is away the room being busy is not a reason to stay out of it —
+        //   that is the whole point of covering. The quiet test is what normally keeps
+        //   the bot from talking across a live conversation.
+        if (isCovering()) return true;
         _prune(now());
         return _stamps.length < quietMax;
     }
 
     function _cooldownSec() {
+        // ⇒ Flat and short while covering. The doubling ladder exists to make the bot
+        //   quieter over a long stream, which is the opposite of what is wanted here.
+        if (isCovering()) return coverCooldownSec();
         if (!isLive()) return cooldownOfflineSec;          // flat, no backoff — see above
         // ⛔ EXPONENT IS streak-1, NOT streak. The streak counts comments ALREADY MADE,
         // so after the first one the next wait is the BASE (2 min), not double it.
