@@ -1,21 +1,28 @@
 # Mind_B0t guest-DJ setlist, in play order.
-# Generated from Max's Serato crate: 090826 Mind_B0t Ambient Dreamscapes set
+# Generated from Max's Serato crate: 090926 Angry Robot Noises
 # Artist and title come from Serato's own database, NOT from filenames — the crate
 # stores only paths, and most of his filenames carry no artist at all.
 # Regenerate rather than hand-edit: the crate is the source of truth.
- 1. Jonn Serrie, Hemi-Sync — Celestial Space with Hemi-Sync®
- 2. Craig Padilla — The Light in the Shadow
- 3. Martin Stürtzer — Submerged
- 4. State Azure — Sun Construct
- 5. Frank Klare — Alpha Moods
- 6. Paul Ellis — Silver Star Mountain in Winter Monochrome
- 7. Ian Boddy — Wavetable #22
- 8. Klaus Schulze — Conphära
- 9. Steve Roach — Firelight
-10. computerchemist — Sunlight Kisses On Forest Floor
-11. Tangerine Dream — Nebulous Dawn
-12. The Orb — Blue Room (Full Length Mix)
-13. Kraftwerk — Autobahn - 2009 Remaster
-14. Chuck van Zyl — Constellation, Pt. 2
-15. Delerium, Sarah McLachlan — Silence - Michael Wood Remix
-16. Jean-Michel Jarre — Oxygene, Pt. 6
+ 1. Carl Michael Von Hausswolff, Jason Lescalleet, Joachim Nordwall — Untitled
+ 2. Jim Haynes — Telegraphy by the Sea
+ 3. Brighter Death Now — Fourteen
+ 4. Pauline Oliveros — A Little Noise In The System - Moog System
+ 5. Inanna — Submission To Solitude I-III
+ 6. The Body Lovers, The Body Haters — Track 02
+ 7. Prurient — Fossil
+ 8. Dust Belt — Setbacks and Perimeters
+ 9. Lugola — Cold Eyes of Fear
+10. Con-Dom — Untitled 1
+11. Zbigniew Karkowski — Mergence
+12. Merzbow — Untitled
+13. Aube — Drift
+14. Controlled Bleeding — Bones
+15. Âmes Sanglantes — The Watchful Eyes Crackdown
+16. Lugola — No Future
+17. Hiroshi Hasegawa, Kazehito Seki — Tamaki -環- part I
+18. Pain Jerk — Plug-Out
+19. Merzbow, Sun Ra — Granular Jazz Pt. 2
+20. Black Leather Jesus — Sex Is A Dark Friend 1
+21. Kazumoto Endo — Out of The Controls
+22. Hiroshi Hasegawa — Variations For Fringe Area No. 1
+23. Merzbow — Resurrection
