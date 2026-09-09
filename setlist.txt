@@ -1,0 +1,21 @@
+# Mind_B0t guest-DJ setlist, in play order.
+# Generated from Max's Serato crate: 090826 Mind_B0t Ambient Dreamscapes set
+# Artist and title come from Serato's own database, NOT from filenames — the crate
+# stores only paths, and most of his filenames carry no artist at all.
+# Regenerate rather than hand-edit: the crate is the source of truth.
+ 1. Jonn Serrie, Hemi-Sync — Celestial Space with Hemi-Sync®
+ 2. Craig Padilla — The Light in the Shadow
+ 3. Martin Stürtzer — Submerged
+ 4. State Azure — Sun Construct
+ 5. Frank Klare — Alpha Moods
+ 6. Paul Ellis — Silver Star Mountain in Winter Monochrome
+ 7. Ian Boddy — Wavetable #22
+ 8. Klaus Schulze — Conphära
+ 9. Steve Roach — Firelight
+10. computerchemist — Sunlight Kisses On Forest Floor
+11. Tangerine Dream — Nebulous Dawn
+12. The Orb — Blue Room (Full Length Mix)
+13. Kraftwerk — Autobahn - 2009 Remaster
+14. Chuck van Zyl — Constellation, Pt. 2
+15. Delerium, Sarah McLachlan — Silence - Michael Wood Remix
+16. Jean-Michel Jarre — Oxygene, Pt. 6
