@@ -41,8 +41,10 @@ export class ClaudeOperations {
             // instead of a bare string. It's re-sent on every call (mentions, !song,
             // shoutouts) and is ~85-90% of the bot's token cost — caching cuts that
             // ~85-90% on every call that hits within the 5-min ephemeral cache window,
-            // which comfortably covers live-stream call cadence. temperature stays 1;
-            // deliberately NOT adding top_p (that 400s alongside temperature — the S1 bug).
+            // which comfortably covers live-stream call cadence.
+            // ⚠ THIS COMMENT USED TO END "temperature stays 1; deliberately NOT adding top_p
+            //   (that 400s alongside temperature — the S1 bug)." BOTH HALVES ARE NOW DEAD:
+            //   no sampling parameter is sent at all — see the note at the call below.
             const response = await this.anthropic.messages.create({
                 model: this.model_name,
                 system: [
@@ -84,7 +86,16 @@ export class ClaudeOperations {
                 // triggers, !song, welcomes, thanks, shoutouts, idle chatter, hype trains.
                 // Env-overridable so it can be retuned on Render without a deploy.
                 max_tokens: Number(process.env.MAX_TOKENS || 300),
-                temperature: 1,
+                // ⛔⛔ NO `temperature`, AND THIS IS NOT A TIDY-UP — SAMPLING PARAMETERS ARE
+                //   REMOVED ON SONNET 5. `temperature`, `top_p` and `top_k` each return a 400
+                //   on that model, so the line that used to sit here (`temperature: 1`) would
+                //   have failed EVERY call the moment MODEL_NAME changed, and the bot would
+                //   have gone silent mid-stream with no other symptom.
+                // ⚑ Third time this exact trap has been hit in this file: `top_p` 400'd
+                //   alongside `temperature` in the Stage 1 Claude swap (the S1 bug, commit
+                //   09cdad5). The parameter moved; the trap did not.
+                // ⚠ Omitting it is not a behaviour change worth tuning around — the API
+                //   default is the same value the line was setting.
             });
 
             // Log token usage incl. cache read/write so cache hits are visible in Render
