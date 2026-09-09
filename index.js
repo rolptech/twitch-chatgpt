@@ -22,6 +22,7 @@ import {createChatWelcome} from './chat_welcome.js';
 import {createIdleChatter} from './idle_chatter.js';
 import {createMapPromo} from './map_promo.js';
 import {createCoverMode} from './cover_mode.js';
+import {createHostMode} from './host_mode.js';
 import WebSocket from 'ws';
 
 // The four cleaners profileLines needs, bundled once so both shoutout paths
@@ -251,8 +252,13 @@ function _buildRaidPrompt(username, viewers, profile) {
     // ⚠ Read at BUILD time, not at handler entry: the raid welcome is held for
     //   RAID_SHOUTOUT_DELAY_SEC, and this line must reflect the mode as it is when the
     //   message is composed rather than a state captured earlier.
-    const _coverRaid = coverMode.raidLine();
-    if (_coverRaid) lines.push(_coverRaid);
+    // ⛔ HOST MODE WINS IF BOTH ARE SOMEHOW ON. They describe incompatible situations —
+    //   cover apologises for Max's absence on his behalf, host is a guest DJ in its own
+    //   voice — and pushing both would contradict itself inside one welcome.
+    const _hostRaid = hostMode.raidLine();
+    const _coverRaid = _hostRaid ? "" : coverMode.raidLine();
+    if (_hostRaid) lines.push(_hostRaid);
+    else if (_coverRaid) lines.push(_coverRaid);
     return lines.join("\n");
 }
 
@@ -541,7 +547,9 @@ const idleChatter = createIdleChatter({
     cooldownLiveSec: Number(process.env.IDLE_COOLDOWN_LIVE_SEC ?? 240),
     cooldownOfflineSec: Number(process.env.IDLE_COOLDOWN_OFFLINE_SEC ?? 7200),
     // ⇒ Getters, not values: the mode flips mid-stream and nothing is rebuilt.
-    isCovering: () => coverMode.isOn(),
+    // ⛔ HOST MODE REPORTS THROUGH THE SAME ACCESSOR so the quiet gate and the flat backoff
+    //   apply to it without a second set of dials. One place decides how chatty it is.
+    isCovering: () => coverMode.isOn() || hostMode.isOn(),
     coverCooldownSec: () => coverMode.coverCooldownSec(),
 });
 
@@ -578,6 +586,16 @@ const coverMode = createCoverMode({
     cooldownSec: Number(process.env.COVER_COOLDOWN_SEC ?? 45),
 });
 
+// ⛔ HOST MODE — Mind_B0t as GUEST DJ. Same wiring as cover mode on purpose; what differs
+//   is four strings, a setlist and a third command. See host_mode.js for Max's rulings.
+const hostMode = createHostMode({
+    say: (sayChannel, message) => bot.say(sayChannel, message),
+    claudeCall: (text) => claude_ops.make_claude_call(text),
+    isEnabled: () => _botEnabled,
+    sayChunkedFn: sayChunked,
+    maxLength: MAX_LENGTH,
+});
+
 // ⛔⛔ COVER CONTEXT, ADDED AT THE ONE PLACE EVERY CLAUDE CALL PASSES THROUGH.
 //   There are 18 call sites; wrapping the method once is the same technique already used
 //   for bot.say above, and it cannot be forgotten at a new one.
@@ -589,7 +607,8 @@ const coverMode = createCoverMode({
 //   today's, so nothing about normal operation changes.
 const _rawClaudeCall = claude_ops.make_claude_call.bind(claude_ops);
 claude_ops.make_claude_call = (text) => {
-    const ctx = coverMode.contextLine();
+    // ⇒ Host mode's context replaces cover's for the same reason as the raid line above.
+    const ctx = hostMode.isOn() ? hostMode.contextLine() : coverMode.contextLine();
     return _rawClaudeCall(ctx ? `${ctx}\n\n${text}` : text);
 };
 
@@ -869,6 +888,20 @@ bot.onMessage(async (channel, user, message, self) => {
     // that neither name matches TRIGGER_REGEX, so invoking one cannot also trigger a reply.
     // ⛔ Non-mods are ignored SILENTLY: announcing the refusal would tell chat the command
     //   exists and invite people to try it.
+    // Host mode — !hoststart / !hostend / !raidout (Max's names, 7-8 Sep 2026).
+    // ⛔ !raidout DOES NOT END THE MODE — "it won't be hostend, because the ghosting should not
+    //   end". It fires the goodbye BEFORE the raid and leaves host mode running.
+    // ⛔ Non-mods are ignored SILENTLY, same as cover mode: announcing a refusal tells chat the
+    //   command exists and invites people to try it.
+    if (_msg === "!hoststart" || _msg === "!hostend" || _msg === "!raidout") {
+        if (!_isModOrBroadcaster(user)) return;
+        if (_msg === "!hoststart") await hostMode.turnOn(channel);
+        else if (_msg === "!hostend") await hostMode.turnOff(channel);
+        else await hostMode.raidOut(channel);
+        console.log(`[mind_b0t] ${_msg} by ${user.username} — host mode ${hostMode.isOn() ? "ON" : "OFF"}`);
+        return;
+    }
+
     if (_msg === "!coverstart" || _msg === "!coverend") {
         if (!_isModOrBroadcaster(user)) return;
         if (_msg === "!coverstart") await coverMode.turnOn(channel);
