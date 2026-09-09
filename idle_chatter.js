@@ -84,6 +84,13 @@ const DEFAULT_COOLDOWN_LIVE_SEC = 240;
 // comment); doubling the ceiling too restores the four-rung shape at the new scale.
 const DEFAULT_BACKOFF_MAX_SEC = 1920;
 const DEFAULT_COOLDOWN_OFFLINE_SEC = 7200;
+// ⛔ HOST MODE'S OWN LADDER — 90s base, doubling to a 12-minute ceiling: 1.5, 3, 6, 12.
+//   Shorter than the normal live base (a guest DJ is meant to be present) but it still
+//   BACKS OFF, which flat 45s never did. _selfStreak resets to 0 the moment a human
+//   speaks, so an active chat holds this at the base all night and only a dead room
+//   climbs the ladder.
+const DEFAULT_HOST_COOLDOWN_SEC = 90;
+const DEFAULT_HOST_BACKOFF_MAX_SEC = 720;
 const DEFAULT_TICK_SEC = 15;
 
 // Bots whose messages must not count as chat activity. Lowercased, no leading @/#.
@@ -206,6 +213,14 @@ export function createIdleChatter({
     //   unless something actively turns the mode on.
     isCovering = () => false,
     coverCooldownSec = () => 45,
+    // ⛔ HOST MODE IS NOT COVER MODE, AND THE DIFFERENCE IS THE ROOM (Max, 8 Sep 2026).
+    //   Cover mode's flat cooldown is right for a channel Max has LEFT — nobody is there
+    //   to notice the bot filling the silence. A guest-DJ set is a LIVE room with people
+    //   in it, so host mode KEEPS THE BACKOFF LADDER and only shortens its base.
+    // ⇒ Defaults off, exactly as cover's are, so nothing changes for existing callers.
+    isHosting = () => false,
+    hostCooldownSec = () => DEFAULT_HOST_COOLDOWN_SEC,
+    hostBackoffMaxSec = DEFAULT_HOST_BACKOFF_MAX_SEC,
     say,
     claudeCall,
     isEnabled = () => true,
@@ -239,6 +254,23 @@ export function createIdleChatter({
     // ⛔ Reset by ANY human message (Max, 21 Aug 2026), which includes one the bot then
     // replies to — a person speaking is a person in the room, however the bot found out.
     let _selfStreak = 0;
+    // ⛔⛔ NEVER REPEAT A PROMPT YOU HAVE ALREADY ANSWERED (Max, 8 Sep 2026, from a live repeat).
+    //   Every prompt is a PURE FUNCTION of the track and the title — three categories
+    //   interpolate ${t} and nothing else that varies, set_vibe is built from the title
+    //   plus the track, and FOUR (hype, robot_joke, twitch_fact, planet_weather) take no
+    //   arguments at all and are CONSTANT STRINGS for the whole stream.
+    // ⚠ AND THE MODEL CANNOT SEE THAT IT ALREADY ANSWERED ONE: history is capped at 3 and
+    //   the log showed it being trimmed on every call, so its previous output is gone.
+    //   ⇒ Same prompt, nothing to vary against, byte-identical reply. Observed three times
+    //     verbatim over one long ambient track, 07:46 / 07:47 / 07:49 on 8 Sep.
+    // ⛔⛔ THE KEY IS THE PROMPT STRING, NOT THE CATEGORY AND NOT THE TRACK. A per-TRACK
+    //   slate was written first and was WRONG: it resets on a track change, which frees the
+    //   four constant categories to fire the identical prompt again on the next track. The
+    //   prompt string subsumes both — a track-driven prompt changes by itself when the
+    //   track does, and a constant one never changes, which is exactly the distinction.
+    // ⇒ The fix is at the PICK, not in the prompt.
+    const _RECENT_PROMPTS_MAX = 12;
+    let _recentPrompts = [];      // FIFO of prompt strings already spoken
 
     function _isBot(username) {
         return _bots.has(String(username || "").toLowerCase().replace(/^[@#]/, ""));
@@ -272,6 +304,16 @@ export function createIdleChatter({
     }
 
     function _cooldownSec() {
+        // ⛔⛔ HOST MODE IS CHECKED BEFORE COVER AND KEEPS THE LADDER (Max, 8 Sep 2026).
+        //   Host mode reports through isCovering() as well — one set of chattiness dials —
+        //   so without this branch it would take cover's FLAT cooldown and never reach the
+        //   doubling below. Live on 8 Sep that meant a comment every ~45s all set.
+        // ⚠ The ladder is the control that answers "nobody is talking back": _selfStreak
+        //   counts unprompted comments and noteMessage() resets it to 0 on any human line.
+        if (isHosting()) {
+            const _rung = Math.max(0, _selfStreak - 1);
+            return Math.min(hostCooldownSec() * Math.pow(2, _rung), hostBackoffMaxSec);
+        }
         // ⇒ Flat and short while covering. The doubling ladder exists to make the bot
         //   quieter over a long stream, which is the opposite of what is wanted here.
         if (isCovering()) return coverCooldownSec();
@@ -294,9 +336,12 @@ export function createIdleChatter({
         _lastSpokeAt = now();
     }
 
-    function _pickCategory(track, title) {
+    // ⚠ `excludePrompts` is a Set of PROMPT STRINGS, not keys, and is OPTIONAL — every
+    //   existing caller and test that passes two arguments behaves exactly as before.
+    function _pickCategory(track, title, excludePrompts = null) {
         const pool = CATEGORIES.filter((c) =>
-            (!c.needsTrack || Boolean(track)) && (!c.needsTitle || Boolean(title)));
+            (!c.needsTrack || Boolean(track)) && (!c.needsTitle || Boolean(title))
+            && !(excludePrompts && excludePrompts.has(c.prompt(track, title))));
         const total = pool.reduce((s, c) => s + c.weight, 0);
         if (total <= 0) return null;
         let r = random() * total;
@@ -377,10 +422,21 @@ export function createIdleChatter({
 
         const track = nowPlaying();
         const title = streamTitle();
-        const cat = _pickCategory(track, title);
+
+        const cat = _pickCategory(track, title, new Set(_recentPrompts));
+        // ⛔ POOL EXHAUSTED = SAY NOTHING, and that silence is the point. On a long ambient
+        //   track the bot runs out of things it has not already said, and waiting for the
+        //   next track is correct — repeating itself is what this mechanism exists to stop.
         if (!cat) return false;
 
-        const spoke = await _speak(channel, cat.prompt(track, title), `self/${cat.key}`);
+        const _prompt = cat.prompt(track, title);
+        const spoke = await _speak(channel, _prompt, `self/${cat.key}`);
+        // ⚠ Recorded only on SUCCESS. A failed or suppressed call said nothing, so the
+        //   prompt is still unused and must stay available.
+        if (spoke) {
+            _recentPrompts.push(_prompt);
+            if (_recentPrompts.length > _RECENT_PROMPTS_MAX) _recentPrompts.shift();
+        }
         // ⛔ Only the UNPROMPTED path escalates. maybeReplyTo does not, because reaching
         // it means a human just spoke — which has already reset the streak to 0.
         if (spoke) _selfStreak += 1;

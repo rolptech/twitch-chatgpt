@@ -551,6 +551,13 @@ const idleChatter = createIdleChatter({
     //   apply to it without a second set of dials. One place decides how chatty it is.
     isCovering: () => coverMode.isOn() || hostMode.isOn(),
     coverCooldownSec: () => coverMode.coverCooldownSec(),
+    // ⛔ HOST MODE ALSO REPORTS SEPARATELY, and it must — isCovering() alone would hand it
+    //   cover mode's FLAT cooldown and skip the backoff ladder entirely. Max, 8 Sep 2026,
+    //   watching it comment every ~45s into his own live set: "maybe there should still be
+    //   some cooldown". There was one; what was missing was the LADDER.
+    isHosting: () => hostMode.isOn(),
+    hostCooldownSec: () => Number(process.env.HOST_COOLDOWN_SEC ?? 90),
+    hostBackoffMaxSec: Number(process.env.HOST_BACKOFF_MAX_SEC ?? 720),
 });
 
 // ⛔ EVERY outgoing message restarts the idle cooldown, whatever produced it — a
