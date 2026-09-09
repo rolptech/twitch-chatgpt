@@ -82,10 +82,42 @@ export class ClaudeOperations {
                 // ⇒ If replies get LONGER, the prompt lost. Fix the prompt. Do NOT reach
                 //   for this number — three rounds (300→200→250) already proved that path.
                 //
+                // ⛔⛔ 300 → 420 ON 9 Sep 2026, AND THIS IS **NOT** THE FORBIDDEN MOVE ABOVE.
+                //   READ THIS BEFORE CONCLUDING THE RULE WAS IGNORED.
+                //
+                // ⭐⭐ EVERY NUMBER IN THIS BLOCK IS IN **CHARACTERS**, CONVERTED THROUGH A
+                //   TOKENIZER THAT NO LONGER APPLIES. The Haiku→Sonnet 5 swap changed the
+                //   conversion, so the same ceiling now buys a THIRD LESS ROOM:
+                //
+                //   [measured on file_context.txt — 42,891 characters, IDENTICAL bytes,
+                //    from the two models' own reported cache sizes]
+                //     Haiku 4.5   12,566 tokens  →  3.41 chars/token  →  300 = ~1,024 chars
+                //     Sonnet 5    17,209 tokens  →  2.49 chars/token  →  300 = ~748 chars
+                //     ⇒ Sonnet spends 1.37x as many tokens on the same text.
+                //
+                // ⇒ THE REPLIES DID NOT GET LONGER. [measured from the live log] two Sonnet
+                //   replies ran 457 and 423 characters at 4 and 5 sentences — obeying the
+                //   prompt exactly, and no longer than Haiku's were. ⛔ The prompt did not
+                //   lose. The BACKSTOP SHRANK BY 27% UNDERNEATH IT.
+                //
+                // ⇒ 420 restores the CHARACTER budget this ceiling was deliberately set to
+                //   (420 × 2.49 ≈ 1,046 chars ≈ the ~1,030 that 300 bought on Haiku). It
+                //   grants the model NO more room than Max already ruled for; it stops the
+                //   tokenizer silently taking a quarter of it away.
+                //
+                // ⚠ THE RULE ABOVE STILL BINDS. If replies grow in CHARACTERS, fix the
+                //   prompt. This edit is the one case it does not cover: the characters were
+                //   constant and the unit moved. ⛔ Do not cite this as licence to raise the
+                //   number when a reply is simply too long.
+                //
+                // ⚑ What triggered it: 12:37:07 on 9 Sep, the first factual answer after the
+                //   swap — album, year and label, exactly what the swap was for — hit
+                //   `stop=max_tokens` and the bot logged "TRUNCATED at the 300-token ceiling."
+                //
                 // ⚠ This is the ONLY max_tokens in the bot and every Claude path uses it:
                 // triggers, !song, welcomes, thanks, shoutouts, idle chatter, hype trains.
                 // Env-overridable so it can be retuned on Render without a deploy.
-                max_tokens: Number(process.env.MAX_TOKENS || 300),
+                max_tokens: Number(process.env.MAX_TOKENS || 420),
                 // ⛔⛔ NO `temperature`, AND THIS IS NOT A TIDY-UP — SAMPLING PARAMETERS ARE
                 //   REMOVED ON SONNET 5. `temperature`, `top_p` and `top_k` each return a 400
                 //   on that model, so the line that used to sit here (`temperature: 1`) would
