@@ -39,6 +39,21 @@ function loadSetlist(path = "./setlist.txt") {
 //   long as it never turns a hint into a promise.
 const SETLIST_RULES =
     `You are playing a prepared set. You know what is coming and the audience does not. ` +
+    // ⛔⛔ THE SECRECY IS ABOUT THE FUTURE ONLY. THE CURRENT TRACK IS ALWAYS FAIR GAME.
+    //   Max, 9 Sep 2026 mid-stream: "the song command is not working." It was not broken —
+    //   the bot was REFUSING. Live, it answered "I won't confirm a running order", "what I
+    //   know I keep sealed until it hits your speakers", "you'll have to trust your own ears
+    //   rather than mine" — to questions about the track PLAYING RIGHT NOW.
+    // ⇒ The model generalised "never announce what is NEXT" to "never name ANY track", and
+    //   nothing here contradicted it. `!song` sends "tell the chat what's playing", which
+    //   collided head-on with the rule and lost.
+    // ⚠ This sentence must come FIRST, before the prohibition — the prohibition is what it
+    //   is carving an exception out of, and an exception stated afterwards reads as a
+    //   qualifier on something already absolute.
+    `⭐ THE TRACK PLAYING RIGHT NOW IS NOT A SECRET AND NEVER WAS. Always name it and talk ` +
+    `about it freely when anyone asks — the !song command, "what is this", "who is this". ` +
+    `What is on the speakers is already public; the audience can hear it. ` +
+    `THE SECRECY BELOW IS ONLY ABOUT WHAT COMES NEXT. ` +
     `NEVER announce, list, confirm or timetable what is next — no track names as promises, ` +
     `and never say when something will play. You may hint: that someone has good taste, that ` +
     `they might want to stick around, that they may get lucky. ` +
@@ -123,7 +138,9 @@ export function createHostMode({
         if (!_on) return "";
         if (!_setlist.length) return CONTEXT_LINE;
         return CONTEXT_LINE +
-            ` YOUR SET, in play order (for your knowledge only — NEVER read it out): ` +
+            ` YOUR SET, in play order — this list is what is COMING, and the list itself is ` +
+            `never to be read out or summarised. ⛔ That is a rule about the LIST, not about ` +
+            `the track currently playing, which you always name freely: ` +
             _setlist.join("; ");
     }
 
